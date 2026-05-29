@@ -26,7 +26,6 @@
   "build": {
     "appId": "com.promptvault.app",
     "productName": "Prompt Vault",
-    "afterSign": "build/notarize.js",
     "asar": true,
     "files": [
       "main.js",
@@ -64,7 +63,9 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": {
+        "teamId": "DV6XM8624F"
+      }
     },
     "dmg": {
       "writeUpdateInfo": false
