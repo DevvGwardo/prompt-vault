@@ -71,7 +71,8 @@
     "publish": {
       "provider": "github",
       "owner": "DevvGwardo",
-      "repo": "prompt-vault"
+      "repo": "prompt-vault",
+      "releaseType": "release"
     }
   }
 }
