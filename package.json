@@ -1,7 +1,7 @@
 {
   "name": "prompt-vault",
   "productName": "Prompt Vault",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Capture, score, and search prompts from Claude Code, Codex, Grok, and Cursor-agent.",
   "main": "main.js",
   "author": "Prompt Vault",
