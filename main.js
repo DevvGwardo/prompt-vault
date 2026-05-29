@@ -295,7 +295,7 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: `Vault: ${dbApi.count()} prompts`, enabled: false },
     { type: 'separator' },
-    { label: 'Open Vault…', accelerator: 'Cmd+Shift+V', click: createSearchWindow },
+    { label: 'Open Vault…', accelerator: 'CommandOrControl+Shift+V', click: createSearchWindow },
     { label: `Save clipboard (${HOTKEY})`, click: saveClipboardManual },
     { label: `Quick-save pending (${SAVE_PENDING_HOTKEY})`, click: () => {
       if (!pending) return;
@@ -481,8 +481,16 @@ app.whenReady().then(() => {
   // Hide from dock on macOS — this is a menu-bar app
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
 
-  const trayIcon = nativeImage.createFromNamedImage('NSStatusAvailable', [-1, 0, 1]) ||
-                   nativeImage.createEmpty();
+  // macOS uses a template named image for the menu bar; Windows/Linux need a real
+  // icon file or the tray is invisible.
+  let trayIcon;
+  if (process.platform === 'darwin') {
+    trayIcon = nativeImage.createFromNamedImage('NSStatusAvailable', [-1, 0, 1]) ||
+               nativeImage.createEmpty();
+  } else {
+    trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray', 'tray-icon.png'));
+    if (trayIcon.isEmpty()) trayIcon = nativeImage.createEmpty();
+  }
   tray = new Tray(trayIcon);
   tray.setTitle('PV');
   refreshTrayMenu();

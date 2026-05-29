@@ -717,7 +717,12 @@ function renderDetail(row) {
       </div>`;
     return;
   }
-  const cwdShort = row.cwd ? row.cwd.replace(/^\/Users\/[^/]+/, '~').split('/').slice(-2).join('/') : '';
+  const cwdShort = row.cwd
+    ? row.cwd
+        .replace(/^\/Users\/[^/]+/, '~')
+        .replace(/^[A-Za-z]:\\Users\\[^\\]+/, '~')
+        .split(/[/\\]/).filter(Boolean).slice(-2).join('/')
+    : '';
   const r = row.reasons ? row.reasons.split(',').map(t => t.trim()).filter(Boolean) : [];
   const tags = row.tags ? row.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
   const trained = trainedIds[row.id];

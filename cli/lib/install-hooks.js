@@ -12,10 +12,17 @@ function ask(q) {
   });
 }
 
+const IS_WIN = process.platform === 'win32';
+
 function which(bin) {
-  for (const dir of (process.env.PATH || '').split(':')) {
-    const p = path.join(dir, bin);
-    try { if (fs.statSync(p).isFile()) return p; } catch {}
+  const sep = IS_WIN ? ';' : ':';
+  const exts = IS_WIN ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';') : [''];
+  for (const dir of (process.env.PATH || '').split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const p = path.join(dir, bin + ext);
+      try { if (fs.statSync(p).isFile()) return p; } catch {}
+    }
   }
   return null;
 }
@@ -39,11 +46,66 @@ async function wireClaudeCode() {
   console.log('  ✓ Claude Code UserPromptSubmit hook wired.');
 }
 
+// POSIX puts wrappers in ~/.local/bin (conventionally on PATH). Windows has no
+// such convention, so we use ~/.prompt-vault/bin and ask the user to add it to PATH.
+function wrapperDir() {
+  return IS_WIN
+    ? path.join(os.homedir(), '.prompt-vault', 'bin')
+    : path.join(os.homedir(), '.local', 'bin');
+}
+
 function wireBinaryWrapper(name, realPathHint) {
-  const target = path.join(os.homedir(), '.local', 'bin', name);
+  const dir = wrapperDir();
   const realPath = realPathHint || fs.realpathSync(which(name) || '');
-  if (!realPath || realPath === target) {
-    console.log(`  · ${name} not found or already a wrapper — skipping.`);
+  if (!realPath) {
+    console.log(`  · ${name} not found — skipping.`);
+    return;
+  }
+  fs.mkdirSync(dir, { recursive: true });
+
+  if (IS_WIN) {
+    // Windows: a .cmd shim that delegates to a Node helper so we avoid fragile
+    // batch arg-parsing. The helper fires the capture, then runs the real binary.
+    const helper = path.join(dir, `${name}-pv-wrapper.js`);
+    const cmd = path.join(dir, `${name}.cmd`);
+    if (path.resolve(cmd) === path.resolve(realPath)) {
+      console.log(`  · ${name} already resolves to a wrapper — skipping.`);
+      return;
+    }
+    const helperScript = `// Prompt Vault wrapper for ${name} — captures -p prompts then runs the real binary.
+const http = require('http');
+const { spawn } = require('child_process');
+const REAL = ${JSON.stringify(realPath)};
+const argv = process.argv.slice(2);
+let prompt = '';
+for (let i = 0; i < argv.length; i++) {
+  if ((argv[i] === '-p' || argv[i] === '--prompt') && argv[i + 1]) { prompt = argv[i + 1]; break; }
+}
+if (prompt) {
+  const body = JSON.stringify({ prompt, source: ${JSON.stringify(name)}, cwd: process.cwd() });
+  try {
+    const req = http.request({ host: '127.0.0.1', port: 8765, path: '/prompt', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 1000 });
+    req.on('error', () => {});
+    req.on('timeout', () => req.destroy());
+    req.write(body); req.end();
+  } catch {}
+}
+const child = spawn(REAL, argv, { stdio: 'inherit' });
+child.on('exit', code => process.exit(code == null ? 0 : code));
+child.on('error', () => process.exit(1));
+`;
+    const cmdScript = `@echo off\r\nnode "%~dp0${name}-pv-wrapper.js" %*\r\n`;
+    fs.writeFileSync(helper, helperScript);
+    fs.writeFileSync(cmd, cmdScript);
+    console.log(`  ✓ ${name} wrapper installed at ${cmd}`);
+    console.log(`    Add "${dir}" to the FRONT of your PATH (ahead of the real ${name}).`);
+    return;
+  }
+
+  const target = path.join(dir, name);
+  if (realPath === target) {
+    console.log(`  · ${name} already resolves to a wrapper — skipping.`);
     return;
   }
   const script = `#!/usr/bin/env bash
@@ -61,7 +123,6 @@ if [[ -n "$PV_PROMPT" ]]; then
 fi
 exec "$REAL" "$@"
 `;
-  fs.mkdirSync(path.dirname(target), { recursive: true });
   if (fs.existsSync(target)) fs.unlinkSync(target);
   fs.writeFileSync(target, script, { mode: 0o755 });
   console.log(`  ✓ ${name} wrapper installed at ${target}`);
@@ -102,7 +163,26 @@ function unwireClaudeCode() {
 }
 
 function removeBinaryWrapper(name) {
-  const target = path.join(os.homedir(), '.local', 'bin', name);
+  const dir = wrapperDir();
+  if (IS_WIN) {
+    const cmd = path.join(dir, `${name}.cmd`);
+    const helper = path.join(dir, `${name}-pv-wrapper.js`);
+    let removed = false;
+    for (const f of [cmd, helper]) {
+      if (!fs.existsSync(f)) continue;
+      let contents = '';
+      try { contents = fs.readFileSync(f, 'utf8'); } catch { continue; }
+      if (!contents.includes('-pv-wrapper.js') && !contents.includes('Prompt Vault wrapper')) {
+        console.log(`  · ${f} is not a Prompt Vault wrapper — leaving it.`);
+        continue;
+      }
+      fs.unlinkSync(f);
+      removed = true;
+    }
+    if (removed) console.log(`  ✓ removed ${name} wrapper from ${dir}`);
+    return;
+  }
+  const target = path.join(dir, name);
   if (!fs.existsSync(target)) return;
   let contents = '';
   try { contents = fs.readFileSync(target, 'utf8'); } catch { return; }
