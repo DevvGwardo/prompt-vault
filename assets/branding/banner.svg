@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" role="img" aria-labelledby="title desc">
+  <title id="title">Prompt Vault banner</title>
+  <desc id="desc">Dark banner with Prompt Vault wordmark, tagline, and a green vault-inspired prompt motif.</desc>
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#50e3a4" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#50e3a4" stop-opacity="0.04"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="320" rx="28" fill="#141414"/>
+  <rect x="18" y="18" width="1244" height="284" rx="22" fill="#181818" stroke="#232323"/>
+  <rect x="784" y="40" width="436" height="240" rx="28" fill="url(#glow)" stroke="#232323"/>
+  <g opacity="0.7">
+    <path d="M860 100h180c26 0 48 22 48 48v72c0 26-22 48-48 48H860c-26 0-48-22-48-48v-72c0-26 22-48 48-48Z" fill="none" stroke="#50e3a4" stroke-width="12"/>
+    <path d="M892 100v-8c0-32 26-58 58-58s58 26 58 58v8" fill="none" stroke="#50e3a4" stroke-width="12" stroke-linecap="round"/>
+    <path d="M956 146l-30 38h24l-8 36 38-50h-26l12-24Z" fill="#50e3a4"/>
+    <path d="M1118 112h52" stroke="#50e3a4" stroke-width="10" stroke-linecap="round"/>
+    <path d="M1118 152h34" stroke="#50e3a4" stroke-width="10" stroke-linecap="round"/>
+    <path d="M1118 192h52" stroke="#50e3a4" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <g fill="#7a7a7a" font-family="'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="14" letter-spacing="2">
+    <text x="72" y="74">LOCAL-FIRST MACOS DESKTOP APP</text>
+  </g>
+  <g fill="#fafafa" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="72" y="154" font-size="72" font-weight="700" letter-spacing="-2">Prompt Vault</text>
+    <text x="72" y="202" font-size="24" fill="#fafafa">Capture, score, and search prompts from Claude Code, Codex, Grok, and Cursor-agent.</text>
+  </g>
+  <g fill="#7a7a7a" font-family="'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="16">
+    <text x="72" y="254">hook -&gt; sqlite -&gt; analyzer.js -&gt; search UI</text>
+  </g>
+  <path d="M72 274h420" stroke="#232323" stroke-width="2"/>
+  <circle cx="516" cy="274" r="6" fill="#50e3a4"/>
+</svg>

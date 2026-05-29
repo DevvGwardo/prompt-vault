@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 240" role="img" aria-labelledby="title desc">
+  <title id="title">Prompt Vault wordmark</title>
+  <desc id="desc">Prompt Vault icon with horizontal wordmark.</desc>
+  <rect width="1080" height="240" rx="28" fill="#141414"/>
+  <rect x="20" y="20" width="1040" height="200" rx="22" fill="#181818" stroke="#232323"/>
+  <g transform="translate(42 20)">
+    <rect x="0" y="0" width="200" height="200" rx="52" fill="#141414"/>
+    <rect x="0" y="0" width="200" height="200" rx="52" fill="none" stroke="#232323" stroke-width="8"/>
+    <path d="M60 84h80c17.673 0 32 14.327 32 32v34c0 17.673-14.327 32-32 32H60c-17.673 0-32-14.327-32-32v-34c0-17.673 14.327-32 32-32Z" fill="none" stroke="#fafafa" stroke-width="8"/>
+    <path d="M74 84V74c0-25.405 20.595-46 46-46s46 20.595 46 46v10" fill="none" stroke="#50e3a4" stroke-width="8" stroke-linecap="round"/>
+    <path d="M112 104l-18 24h14l-6 28 24-32h-16l8-20Z" fill="#50e3a4"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="300" y="112" fill="#fafafa" font-size="74" font-weight="700" letter-spacing="-1.5">Prompt Vault</text>
+    <text x="302" y="154" fill="#7a7a7a" font-size="22">Capture, score, and search prompts from Claude Code, Codex, Grok, and Cursor-agent.</text>
+  </g>
+</svg>

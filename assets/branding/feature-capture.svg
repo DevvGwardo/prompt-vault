@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Capture prompts</title>
+  <desc id="desc">Icon representing prompt capture from agent tooling.</desc>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="#141414"/>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="none" stroke="#232323" stroke-width="8"/>
+  <rect x="52" y="56" width="152" height="144" rx="24" fill="#181818" stroke="#232323" stroke-width="6"/>
+  <path d="M82 98h72" stroke="#50e3a4" stroke-width="12" stroke-linecap="round"/>
+  <path d="M82 128h92" stroke="#fafafa" stroke-width="10" stroke-linecap="round"/>
+  <path d="M82 156h58" stroke="#7a7a7a" stroke-width="10" stroke-linecap="round"/>
+  <path d="M170 86l26 18-26 18" fill="none" stroke="#50e3a4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

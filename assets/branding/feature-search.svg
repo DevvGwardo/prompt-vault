@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Search prompts</title>
+  <desc id="desc">Icon representing prompt search and filtering.</desc>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="#141414"/>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="none" stroke="#232323" stroke-width="8"/>
+  <rect x="48" y="72" width="160" height="48" rx="18" fill="#181818" stroke="#232323" stroke-width="6"/>
+  <circle cx="92" cy="96" r="14" fill="none" stroke="#50e3a4" stroke-width="8"/>
+  <path d="M102 106l14 14" stroke="#50e3a4" stroke-width="8" stroke-linecap="round"/>
+  <path d="M126 96h44" stroke="#fafafa" stroke-width="10" stroke-linecap="round"/>
+  <path d="M62 152h132" stroke="#7a7a7a" stroke-width="10" stroke-linecap="round"/>
+  <path d="M62 182h92" stroke="#7a7a7a" stroke-width="10" stroke-linecap="round"/>
+</svg>

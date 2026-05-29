@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Score prompts</title>
+  <desc id="desc">Icon representing prompt scoring and verdicts.</desc>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="#141414"/>
+  <rect x="12" y="12" width="232" height="232" rx="40" fill="none" stroke="#232323" stroke-width="8"/>
+  <circle cx="128" cy="128" r="64" fill="#181818" stroke="#232323" stroke-width="8"/>
+  <path d="M128 128L172 96" stroke="#50e3a4" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="128" cy="128" r="10" fill="#fafafa"/>
+  <path d="M84 166c12 10 27 16 44 16 16 0 31-5 43-15" fill="none" stroke="#50e3a4" stroke-width="10" stroke-linecap="round"/>
+  <path d="M92 82l12 14" stroke="#f0b450" stroke-width="10" stroke-linecap="round"/>
+  <path d="M164 82l-12 14" stroke="#ff6464" stroke-width="10" stroke-linecap="round"/>
+</svg>
