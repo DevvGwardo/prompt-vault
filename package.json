@@ -1,0 +1,73 @@
+{
+  "name": "prompt-vault",
+  "productName": "Prompt Vault",
+  "version": "0.1.0",
+  "description": "Capture, score, and search prompts from Claude Code, Codex, Grok, and Cursor-agent.",
+  "main": "main.js",
+  "author": "Prompt Vault",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "dist": "electron-builder --mac --arm64",
+    "dist:dir": "electron-builder --mac --arm64 --dir",
+    "dist:all": "electron-builder --mac --arm64 --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.5.0",
+    "@electron/rebuild": "^3.7.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.promptvault.app",
+    "productName": "Prompt Vault",
+    "afterSign": "build/notarize.js",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "analyzer.js",
+      "db.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "hook/**/*",
+      "!**/*.map"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
+  }
+}

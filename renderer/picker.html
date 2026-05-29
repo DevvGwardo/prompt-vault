@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>vault › pick</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; overflow: hidden;
+      font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      -webkit-user-select: none; user-select: none; cursor: default;
+      font-feature-settings: "ss01", "tnum"; }
+
+    .panel {
+      width: 380px; height: 220px;
+      background: rgba(20, 20, 24, 0.94);
+      backdrop-filter: saturate(140%) blur(18px);
+      -webkit-backdrop-filter: saturate(140%) blur(18px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.06) inset;
+      color: #c9c9cf;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .search {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .search .glyph { color: #5a5a64; font-size: 12px; }
+    .search input {
+      flex: 1; background: transparent; border: 0; outline: 0;
+      color: #e7e7ea; font: inherit; font-size: 12px;
+      caret-color: #6bd968;
+    }
+    .search input::placeholder { color: #5a5a64; }
+    .search .count {
+      color: #5a5a64; font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .list {
+      flex: 1; overflow-y: auto; padding: 4px;
+    }
+    .item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 6px;
+      cursor: pointer;
+      font-size: 11.5px;
+    }
+    .item .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #6bd968; flex-shrink: 0;
+    }
+    .item .dot.maybe { background: #f5b942; }
+    .item .dot.skip  { background: #ef5b5b; }
+    .item .score {
+      color: #5a5a64; font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0; width: 18px;
+    }
+    .item .label {
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: #c9c9cf;
+    }
+    .item.active {
+      background: rgba(255,255,255,0.06);
+    }
+    .item.active .label { color: #e7e7ea; }
+    .item.active .score { color: #8a8a92; }
+
+    .footer {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 10px; color: #5a5a64;
+    }
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 14px; padding: 0 4px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 3px;
+      color: #c9c9cf; font-size: 9px;
+    }
+    .empty {
+      padding: 28px 12px; text-align: center;
+      color: #5a5a64; font-size: 11px;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="search">
+      <span class="glyph">›</span>
+      <input id="q" type="text" placeholder="search saved prompts…" spellcheck="false" autofocus />
+      <span class="count" id="count">0</span>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="footer">
+      <span><span class="kbd">↑↓</span> nav</span>
+      <span><span class="kbd">↵</span> copy</span>
+      <span><span class="kbd">⇧↵</span> copy + paste hint</span>
+      <span><span class="kbd">esc</span> close</span>
+    </div>
+  </div>
+  <script src="picker.js"></script>
+</body>
+</html>

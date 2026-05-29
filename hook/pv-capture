@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# pv-capture — universal Prompt Vault capture helper.
+# Usage:
+#   pv-capture --source grok --text "your prompt here"
+#   echo "your prompt" | pv-capture --source codex --stdin
+# Always exits 0 so a stopped vault never blocks the caller.
+set -u
+
+SOURCE="manual"
+TEXT=""
+USE_STDIN=false
+CWD=$(pwd)
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --source) SOURCE="$2"; shift 2 ;;
+    --text)   TEXT="$2";   shift 2 ;;
+    --stdin)  USE_STDIN=true; shift ;;
+    --cwd)    CWD="$2";    shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+if [ "$USE_STDIN" = true ]; then
+  TEXT=$(cat)
+fi
+
+# Empty / whitespace -> drop
+if [ -z "${TEXT//[[:space:]]/}" ]; then exit 0; fi
+
+BODY=$(/usr/bin/python3 -c '
+import json, sys
+print(json.dumps({"prompt": sys.argv[1], "source": sys.argv[2], "cwd": sys.argv[3]}))
+' "$TEXT" "$SOURCE" "$CWD")
+
+/usr/bin/curl -s -m 1 -X POST \
+  -H "Content-Type: application/json" \
+  --data "$BODY" \
+  http://127.0.0.1:8765/prompt >/dev/null 2>&1 || true
+
+exit 0

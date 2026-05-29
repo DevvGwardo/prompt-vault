@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>capture</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100vw; height: 100vh;
+      background: transparent;
+      overflow: hidden;
+      font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      -webkit-user-select: none; user-select: none; cursor: default;
+      font-feature-settings: "ss01", "tnum";
+      pointer-events: none; /* default click-through; pill re-enables for itself */
+    }
+
+    .pill {
+      position: fixed;
+      top: 0; left: 0;
+      will-change: transform;
+      transform: translate3d(0, 0, 0);
+      display: inline-flex; align-items: center; gap: 10px;
+      height: 32px; padding: 0 6px 0 12px;
+      background: rgba(20, 20, 24, 0.92);
+      backdrop-filter: saturate(140%) blur(14px);
+      -webkit-backdrop-filter: saturate(140%) blur(14px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.06) inset;
+      color: #c9c9cf;
+      font-size: 11.5px; line-height: 1;
+      width: max-content;
+      opacity: 0;
+      transition: opacity .12s ease;
+      pointer-events: auto; /* the pill itself is interactive */
+    }
+    .pill.in { opacity: 1; }
+
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #6bd968; box-shadow: 0 0 0 3px rgba(107,217,104,0.15);
+      flex-shrink: 0;
+    }
+    .dot.maybe { background: #f5b942; box-shadow: 0 0 0 3px rgba(245,185,66,0.15); }
+    .dot.skip  { background: #ef5b5b; box-shadow: 0 0 0 3px rgba(239,91,91,0.15); }
+
+    .glyph { color: #5a5a64; font-weight: 500; }
+    .score { color: #8a8a92; font-variant-numeric: tabular-nums; }
+    .label { color: #c9c9cf; }
+
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 18px; padding: 0 6px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      color: #e7e7ea; font-size: 10px; font-weight: 500;
+      letter-spacing: 0.02em;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.4);
+    }
+
+    .sep { color: #3a3a42; }
+
+    .skip, .edit {
+      width: 18px; height: 18px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 0; padding: 0; cursor: pointer;
+      background: transparent; color: #5a5a64;
+      border-radius: 4px;
+      font-family: inherit; font-size: 13px; line-height: 1;
+    }
+    .skip:hover, .edit:hover { color: #e7e7ea; background: rgba(255,255,255,0.06); }
+    .edit { font-size: 11px; }
+
+    /* Inline editor — centered card in the overlay, shown on demand. */
+    .editor {
+      position: fixed; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.32);
+      pointer-events: auto;
+    }
+    .editor.in { display: flex; }
+    .editor-card {
+      width: 540px; max-width: 86vw;
+      display: flex; flex-direction: column; gap: 10px;
+      padding: 16px;
+      background: rgba(20, 20, 24, 0.97);
+      backdrop-filter: saturate(140%) blur(14px);
+      -webkit-backdrop-filter: saturate(140%) blur(14px);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      color: #c9c9cf;
+    }
+    .ed-input, .ed-text {
+      width: 100%; box-sizing: border-box;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 7px;
+      color: #e7e7ea; font-family: inherit; font-size: 12.5px;
+      padding: 8px 10px; outline: none;
+      -webkit-user-select: text; user-select: text;
+    }
+    .ed-input:focus, .ed-text:focus { border-color: rgba(255,255,255,0.28); }
+    .ed-input::placeholder, .ed-text::placeholder { color: #5a5a64; }
+    .ed-text { resize: none; height: 200px; line-height: 1.5; }
+    .editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .ed-btn {
+      height: 30px; padding: 0 14px; cursor: pointer;
+      border-radius: 7px; font-family: inherit; font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.04); color: #c9c9cf;
+    }
+    .ed-btn.ghost:hover { background: rgba(255,255,255,0.08); color: #e7e7ea; }
+    .ed-btn.primary { background: #6bd968; border-color: #6bd968; color: #0b0b0f; font-weight: 600; }
+    .ed-btn.primary:hover { background: #7ee27b; }
+
+    .progress {
+      position: absolute; left: 12px; right: 6px; bottom: 2px; height: 1px;
+      background: rgba(255,255,255,0.18);
+      transform-origin: left center; transform: scaleX(1);
+      transition: transform linear;
+    }
+  </style>
+</head>
+<body>
+  <div class="pill" id="pill">
+    <span class="dot" id="dot"></span>
+    <span class="glyph">›</span>
+    <span class="score" id="score">--</span>
+    <span class="label">capture</span>
+    <span class="kbd">⌘⇧S</span>
+    <span class="sep">·</span>
+    <button class="edit" id="edit" title="edit details">✎</button>
+    <button class="skip" id="skip" title="dismiss (esc)">×</button>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <div class="editor" id="editor">
+    <div class="editor-card">
+      <input class="ed-input" id="ed-title" placeholder="title" spellcheck="false" />
+      <textarea class="ed-text" id="ed-text" placeholder="prompt text" spellcheck="false"></textarea>
+      <input class="ed-input" id="ed-tags" placeholder="tags (comma-separated)" spellcheck="false" />
+      <div class="editor-actions">
+        <button class="ed-btn ghost" id="ed-cancel">Cancel</button>
+        <button class="ed-btn primary" id="ed-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

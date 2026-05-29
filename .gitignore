@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/Release/
+*.log
+.DS_Store
+db.js.bak
+.env
+.env.*
+*.dmg
+*.zip
+*.blockmap
+website/

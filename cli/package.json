@@ -1,0 +1,13 @@
+{
+  "name": "prompt-vault-cli",
+  "version": "0.1.0",
+  "description": "CLI for Prompt Vault — capture prompts from any CLI tool and wire up integrations.",
+  "license": "MIT",
+  "bin": {
+    "pv": "bin/pv.js"
+  },
+  "files": ["bin", "lib", "README.md"],
+  "engines": { "node": ">=18" },
+  "keywords": ["prompt", "vault", "claude", "codex", "grok", "cursor", "llm", "capture"],
+  "repository": { "type": "git", "url": "https://github.com/YOUR/prompt-vault" }
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Prompt Vault</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="grid" id="app">
+    <!-- 1: VAULT (hero 6x2) -->
+    <div class="module m1" id="mod-vault">
+      <span class="module-caption">VAULT</span>
+      <div class="vault-hero">
+        <span class="vault-wordmark">Prompt Vault</span>
+        <div class="vault-subhead mono" id="vault-subhead">— prompts · — pinned · — this week</div>
+      </div>
+    </div>
+
+    <!-- 2: SEARCH (6x1) -->
+    <div class="module m2">
+      <span class="module-caption">SEARCH</span>
+      <div class="search-shell">
+        <input id="q" type="search" placeholder="Search prompts, tags, files…" spellcheck="false" />
+        <span class="search-kbd">/</span>
+      </div>
+    </div>
+
+    <!-- 3: STATS (3x1) -->
+    <div class="module m3">
+      <span class="module-caption">STATS</span>
+      <div class="stats-list">
+        <div class="stat-item">
+          <span class="stat-value tnum" id="stat-total">—</span>
+          <span class="stat-label">TOTAL</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value tnum" id="stat-avg">—</span>
+          <span class="stat-label">AVG SCORE</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value tnum" id="stat-week">—</span>
+          <span class="stat-label">LAST 7 DAYS</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4: VERDICTS (3x1) -->
+    <div class="module m4">
+      <span class="module-caption">VERDICTS</span>
+      <div class="verdicts-row">
+        <div class="verdict-item">
+          <div class="verdict-circle good" id="v-save"></div>
+          <span class="verdict-label">save</span>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-circle warn" id="v-maybe"></div>
+          <span class="verdict-label">maybe</span>
+        </div>
+        <div class="verdict-item">
+          <div class="verdict-circle bad" id="v-skip"></div>
+          <span class="verdict-label">skip</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5: ACTIVITY (3x1) -->
+    <div class="module m5">
+      <span class="module-caption">ACTIVITY</span>
+      <div class="activity-body">
+        <div class="activity-main" id="activity-last">—</div>
+        <div class="activity-sub mono" id="activity-streak">—</div>
+      </div>
+    </div>
+
+    <!-- 10: SCORE (3x1) -->
+    <div class="module m10">
+      <span class="module-caption">SCORE <span class="ratio-badge">16:9</span></span>
+      <div class="histogram" id="histogram"></div>
+    </div>
+
+    <!-- 6: RECENT (6x3) -->
+    <div class="module m6">
+      <span class="module-caption">RECENT</span>
+      <ul class="prompt-list" id="list"></ul>
+    </div>
+
+    <!-- 7: DETAIL (6x3) -->
+    <div class="module m7">
+      <span class="module-caption">DETAIL</span>
+      <div class="detail-tabs">
+        <button class="detail-tab active" data-tab="detail">Detail</button>
+        <button class="detail-tab" data-tab="recent">Recent</button>
+      </div>
+      <div id="detail" class="detail-body"></div>
+      <div id="recent-captures" class="detail-body" style="display:none"></div>
+    </div>
+
+    <!-- 8: SOURCES (3x1) -->
+    <div class="module m8">
+      <span class="module-caption">SOURCES</span>
+      <div class="sources-list" id="sources-list"></div>
+    </div>
+
+    <!-- 9: TAGS (3x1) -->
+    <div class="module m9">
+      <span class="module-caption">TAGS</span>
+      <div class="tags-cloud" id="tags-cloud"></div>
+    </div>
+
+    <!-- 11: KEYBOARD (3x1) -->
+    <div class="module m11">
+      <span class="module-caption">KEYBOARD</span>
+      <div class="shortcuts-list mono">
+        <span><span class="kbd">/</span> focus search</span>
+        <span><span class="kbd">⇧⌘V</span> open vault</span>
+        <span><span class="kbd">⇧⌘P</span> capture</span>
+        <span><span class="kbd">⌘C</span> copy selected</span>
+        <span><span class="kbd">⌘↵</span> save popup</span>
+        <span><span class="kbd">Esc</span> skip</span>
+      </div>
+    </div>
+
+    <!-- 13: PHRASES (9x2) -->
+    <div class="module m13" id="mod-phrases">
+      <span class="module-caption">PHRASES <span class="ratio-badge">optimal</span></span>
+      <div class="phrases-shell">
+        <div class="phrases-left">
+          <pre class="phrases-template" id="phrases-template"></pre>
+        </div>
+        <div class="phrases-right">
+          <div class="phrases-insights" id="phrases-insights"></div>
+          <div class="phrases-pills" id="phrases-pills"></div>
+          <button class="dab-btn ghost" id="a-copy-template" style="margin-top:auto;align-self:flex-end;">
+            <svg viewBox="0 0 20 20" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.75"><rect x="6" y="6" width="11" height="11" rx="2"/><path d="M4 13V5a1 1 0 0 1 1-1h8"/></svg>
+            Copy template
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 12: FOOTER (12x1 thin) -->
+    <div class="module m12 footer-module">
+      <span class="footer-left mono">~/.prompt-vault/vault.db</span>
+      <span class="footer-right mono">v0.1 · <span class="tnum">1 / 1</span></span>
+    </div>
+  </div>
+  <div class="score-tip" id="score-tip"></div>
+  <script src="search.js"></script>
+</body>
+</html>
