@@ -871,47 +871,48 @@ input, textarea { outline: none; }
 }
 .phrases-template {
   margin: 0;
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: var(--module-hi);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   font-family: 'Geist Mono', ui-monospace, Menlo, monospace;
-  font-size: 10.5px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.65;
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
 }
 .phrases-right {
-  width: 220px;
+  width: 230px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   overflow-y: auto;
   min-height: 0;
 }
 .phrases-insights {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.55;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
 }
 .phrases-insight {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 7px;
 }
-.phrases-insight .pi-bulb { flex-shrink: 0; color: var(--warn); }
+.phrases-insight .pi-bulb { flex-shrink: 0; color: var(--warn); margin-top: 1px; font-size: 9px; }
 .phrases-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
 }
 .phrases-pill {
   display: inline-flex; align-items: center;
-  height: 20px; padding: 0 9px;
+  height: 22px; padding: 0 4px 0 10px;
   border-radius: 999px;
   font-size: 9.5px;
   font-family: 'Geist Mono', ui-monospace, monospace;
@@ -919,13 +920,18 @@ input, textarea { outline: none; }
   color: var(--text);
   border: 1px solid var(--border);
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .phrases-pill .pp-score {
+  flex-shrink: 0;
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--module);
   color: var(--muted);
-  margin-left: 3px;
+  font-size: 8.5px;
   font-variant-numeric: tabular-nums;
 }
 .phrases-empty {
