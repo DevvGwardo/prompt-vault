@@ -5,7 +5,8 @@ const fs = require('fs');
 const DB_DIR = process.env.PROMPT_VAULT_DIR || path.join(require('os').homedir(), '.prompt-vault');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
-const db = new Database(path.join(DB_DIR, 'vault.db'));
+const DB_PATH = path.join(DB_DIR, 'vault.db');
+const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -96,14 +97,40 @@ try { db.exec(`CREATE INDEX IF NOT EXISTS idx_pv_prompt ON prompt_versions(promp
 
 // ---- Functions ----
 
+// Analyzer returns reasons as an array and dimensions as an object; the table
+// stores them as a ", "-joined string and JSON respectively.
+function serializeReasons(reasons) {
+  return Array.isArray(reasons) ? reasons.join(', ') : (reasons || '');
+}
+function serializeDimensions(dimensions) {
+  return (dimensions && typeof dimensions === 'object') ? JSON.stringify(dimensions) : (dimensions || '');
+}
+
 function createPrompt({ text, title, tags, source, cwd, score, verdict, reasons, dimensions }) {
   const now = Date.now();
   const stmt = db.prepare(`
     INSERT INTO prompts (text, title, tags, source, cwd, score, verdict, reasons, dimensions, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(text, title || '', tags || '', source || '', cwd || '', score || 0, verdict || '', reasons || '', dimensions || '', now);
+  stmt.run(text, title || '', tags || '', source || '', cwd || '', score || 0, verdict || '', serializeReasons(reasons), serializeDimensions(dimensions), now);
   return db.prepare(`SELECT * FROM prompts ORDER BY id DESC LIMIT 1`).get();
+}
+
+function allTexts() {
+  return db.prepare(`SELECT text FROM prompts`).all().map(r => r.text);
+}
+
+function reanalyzeAll(analyzeFn) {
+  const rows = db.prepare(`SELECT id, text FROM prompts`).all();
+  const upd = db.prepare(`UPDATE prompts SET score = ?, verdict = ?, reasons = ?, dimensions = ? WHERE id = ?`);
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      const a = analyzeFn(r.text);
+      upd.run(a.score || 0, a.verdict || '', serializeReasons(a.reasons), serializeDimensions(a.dimensions), r.id);
+    }
+  });
+  tx();
+  return rows.length;
 }
 
 function getById(id) {
@@ -230,6 +257,16 @@ function kvDelete(key) {
   db.prepare(`DELETE FROM kv_store WHERE key = ?`).run(key);
 }
 
+// ---- Persisted training model (stored in kv_store) ----
+function saveTrainModel(model) {
+  kvSet('train_model', JSON.stringify(model));
+}
+function getTrainModel() {
+  const v = kvGet('train_model');
+  if (!v) return null;
+  try { return JSON.parse(v); } catch (e) { return null; }
+}
+
 // ---- Static HTTP handler for popup's save-as-new ----
 // small helper: returns the last analysed data so the popup window can save it
 let lastAnalysis = null;
@@ -246,11 +283,13 @@ function ensureSchema() {
 }
 
 module.exports = {
-  createPrompt, getById, allPrompts, search,
+  DB_PATH,
+  createPrompt, getById, allPrompts, allTexts, search, reanalyzeAll,
   updatePrompt, deletePrompt, togglePin, count,
   getVersions, restoreVersion, deleteVersion,
   saveRecentCapture, getRecentCaptures, deleteRecentCapture,
   saveTrainingLabel, getTrainingLabels, deleteTrainingLabel,
   kvSet, kvGet, kvDelete,
+  saveTrainModel, getTrainModel,
   setLastAnalysis, getLastAnalysis, ensureSchema
 };

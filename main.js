@@ -211,7 +211,7 @@ function offerToSave(text, source, cwd) {
 
 function saveCurrentPending(overrides = {}) {
   if (!pending) return null;
-  const id = dbApi.savePrompt({
+  const id = dbApi.createPrompt({
     text: overrides.text ?? pending.text,
     title: overrides.title,
     tags: overrides.tags,
@@ -221,7 +221,7 @@ function saveCurrentPending(overrides = {}) {
     verdict: pending.analysis.verdict,
     reasons: pending.analysis.reasons,
     dimensions: pending.analysis.dimensions
-  });
+  }).id;
   // Implicit training: saving from popup = good signal
   dbApi.saveTrainingLabel(id, 'implicit_good');
   pending = null;
@@ -419,10 +419,10 @@ ipcMain.handle('vault:recent-captures', (_e, limit) => dbApi.getRecentCaptures(l
 ipcMain.handle('vault:save-recent', (_e, id) => {
   const row = dbApi.getRecentCaptures(100).find(r => r.id === id);
   if (!row) return null;
-  const newId = dbApi.savePrompt({
+  const newId = dbApi.createPrompt({
     text: row.text, title: row.title, source: row.source, cwd: row.cwd,
     score: row.score, verdict: row.verdict, reasons: row.reasons
-  });
+  }).id;
   dbApi.deleteRecentCapture(id);
   refreshTrayMenu();
   return newId;
