@@ -4,12 +4,12 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-50e3a4?style=flat-square" alt="MIT License">
-  <img src="https://img.shields.io/badge/platform-macOS-181818?style=flat-square" alt="macOS">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-181818?style=flat-square" alt="macOS | Windows">
   <img src="https://img.shields.io/badge/built%20with-Electron-50e3a4?style=flat-square" alt="Built with Electron">
   <a href="https://github.com/DevvGwardo/prompt-vault/releases"><img src="https://img.shields.io/github/v/release/DevvGwardo/prompt-vault?display_name=release&style=flat-square" alt="Latest release"></a>
 </p>
 
-Prompt Vault is a local-first macOS desktop app for capturing the prompts you send through agent tooling, scoring them offline, and making them searchable later. It stores data in SQLite with `better-sqlite3`, analyzes prompt quality in `analyzer.js`, and surfaces everything in an Electron renderer built for fast keyboard-heavy browsing.
+Prompt Vault is a local-first desktop app for macOS and Windows that captures the prompts you send through agent tooling, scores them offline, and makes them searchable later. It stores data in SQLite with `better-sqlite3`, analyzes prompt quality in `analyzer.js`, and surfaces everything in an Electron renderer built for fast keyboard-heavy browsing.
 
 ## Features
 
@@ -29,17 +29,21 @@ Prompt Vault is a local-first macOS desktop app for capturing the prompts you se
 
 ## Install
 
-Download the latest macOS DMG from [GitHub Releases](https://github.com/DevvGwardo/prompt-vault/releases).
+Download the latest build from [GitHub Releases](https://github.com/DevvGwardo/prompt-vault/releases):
+
+- **macOS** — `.dmg` (Apple Silicon and Intel)
+- **Windows** — `Prompt-Vault-Setup-x.y.z.exe` installer, or the portable `.exe`. The build is unsigned, so Windows SmartScreen may warn "unknown publisher" — click **More info → Run anyway**.
 
 ## Build From Source
 
 ```bash
 npm install
 npm start
-npm run dist
+npm run dist      # macOS build (run on macOS)
+npm run dist:win  # Windows build (run on Windows)
 ```
 
-Current package version: `0.1.1`
+Current package version: `0.1.2`
 
 ## How It Works
 
