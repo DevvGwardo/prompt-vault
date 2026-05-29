@@ -776,16 +776,17 @@ input, textarea { outline: none; }
 /* ---------- module 8: SOURCES ---------- */
 .sources-list {
   flex: 1;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-content: center;
-  gap: 8px 16px;
+  gap: 8px 18px;
   overflow: hidden;
 }
 .source-item {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   cursor: default;
   transition: opacity .1s;
 }
@@ -797,9 +798,11 @@ input, textarea { outline: none; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-bar-wrap {
-  width: 28px;
+  width: auto;
   height: 5px;
   background: var(--module-hi);
   border-radius: 999px;

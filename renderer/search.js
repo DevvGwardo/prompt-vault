@@ -1024,6 +1024,12 @@ async function refresh() {
     renderList();
     if (current) renderDetail(rows.find(r => r.id === current) || null);
     else renderDetail(null);
+    // A re-render via innerHTML can destroy the hovered node before mouseleave
+    // fires, orphaning the tooltip. Drop it if its anchor is gone.
+    if (_tipActive && !document.contains(_tipActive)) {
+      _tipActive = null;
+      scoreTip.classList.remove('visible');
+    }
   } catch (e) {
     console.error('[vault] refresh error:', e);
   } finally {
@@ -1137,6 +1143,8 @@ document.addEventListener('mouseenter', e => {
 document.addEventListener('mouseleave', e => {
   const el = e.target.closest?.('.score-hover');
   if (!el) return;
+  // Moving between children of the same anchor isn't a real leave — ignore.
+  if (e.relatedTarget && el.contains(e.relatedTarget)) return;
   hideScoreTip();
 }, true);
 
