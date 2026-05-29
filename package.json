@@ -67,6 +67,11 @@
     },
     "dmg": {
       "writeUpdateInfo": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "DevvGwardo",
+      "repo": "prompt-vault"
     }
   }
 }
