@@ -50,21 +50,13 @@ Current package version: `0.1.1`
 
 ## Screenshots
 
-<p>
-  <img src="assets/branding/screenshot-overview.png" alt="Prompt Vault overview screenshot" width="48%">
-  <img src="assets/branding/screenshot-detail.png" alt="Prompt Vault detail screenshot" width="48%">
+<p align="center">
+  <img src="assets/branding/screenshot-overview.png" alt="Prompt Vault overview" width="100%">
 </p>
 <p>
-  <img src="assets/branding/screenshot-popup.png" alt="Prompt Vault popup screenshot" width="48%">
-  <img src="assets/branding/screenshot-search.png" alt="Prompt Vault search screenshot" width="48%">
+  <img src="assets/branding/screenshot-detail.png" alt="Prompt Vault detail view" width="48%">
+  <img src="assets/branding/screenshot-search.png" alt="Prompt Vault search" width="48%">
 </p>
-
-TODO: drop these exact files into `assets/branding/`
-
-- `screenshot-overview.png`
-- `screenshot-detail.png`
-- `screenshot-popup.png`
-- `screenshot-search.png`
 
 ## License
 

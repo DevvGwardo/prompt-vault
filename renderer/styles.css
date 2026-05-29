@@ -779,7 +779,7 @@ input, textarea { outline: none; }
   display: flex;
   flex-wrap: wrap;
   align-content: center;
-  gap: 4px 12px;
+  gap: 8px 16px;
   overflow: hidden;
 }
 .source-item {
@@ -890,25 +890,25 @@ input, textarea { outline: none; }
 .phrases-insights {
   font-size: 10px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.6;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 .phrases-insight {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
 }
 .phrases-insight .pi-bulb { flex-shrink: 0; color: var(--warn); }
 .phrases-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 .phrases-pill {
   display: inline-flex; align-items: center;
-  height: 18px; padding: 0 7px;
+  height: 20px; padding: 0 9px;
   border-radius: 999px;
   font-size: 9.5px;
   font-family: 'Geist Mono', ui-monospace, monospace;
