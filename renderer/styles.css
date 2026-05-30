@@ -862,6 +862,9 @@ input, textarea { outline: none; }
   display: flex;
   gap: 14px;
   min-height: 0;
+  /* .grid is a window drag region; without this the OS swallows scroll/clicks
+     over the template + pills + copy button. Caption stays draggable. */
+  -webkit-app-region: no-drag;
 }
 .phrases-left {
   flex: 1;

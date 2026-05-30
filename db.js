@@ -210,7 +210,7 @@ function deleteVersion(versionId) {
 // ---- Recent captures ----
 function saveRecentCapture({ text, title, source, cwd, score, verdict, reasons }) {
   const stmt = db.prepare(`INSERT INTO recent_captures (text, title, source, cwd, score, verdict, reasons, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  stmt.run(text, title || '', source || '', cwd || '', score || 0, verdict || '', reasons || '', Date.now());
+  stmt.run(text, title || '', source || '', cwd || '', score || 0, verdict || '', serializeReasons(reasons), Date.now());
 }
 
 function getRecentCaptures() {
