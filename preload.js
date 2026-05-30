@@ -37,5 +37,6 @@ contextBridge.exposeInMainWorld('popup', {
   setIgnoreMouse: ignore => ipcRenderer.invoke('popup:setIgnoreMouse', ignore),
   save: overrides => ipcRenderer.invoke('popup:save', overrides),
   skip: () => ipcRenderer.invoke('popup:skip'),
-  openVault: () => ipcRenderer.invoke('popup:openVault')
+  openVault: () => ipcRenderer.invoke('popup:openVault'),
+  enterEditor: () => ipcRenderer.invoke('popup:enterEditor')
 });

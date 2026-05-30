@@ -98,11 +98,20 @@ function disableInteraction() {
   }, 200);
 }
 
+// Windows: the OS window follows the cursor, so the pill sits at a fixed local
+// spot and we skip the per-frame transform + click-through dance entirely.
+let windowed = false;
+
 window.popup.onData(data => {
   promptData = data;
   cfg = { ...cfg, ...data };
-  // Seed the pill position so the first paint doesn't ease from (0,0).
-  pillX = targetX; pillY = targetY;
+  windowed = !!data.windowed;
+  if (windowed) {
+    pill.style.transform = 'translate3d(6px, 8px, 0)';
+  } else {
+    // Seed the pill position so the first paint doesn't ease from (0,0).
+    pillX = targetX; pillY = targetY;
+  }
   scoreEl.textContent = String(data.analysis.score).padStart(2, '0');
   dot.className = 'dot ' + (data.analysis.verdict || 'maybe');
   pill.classList.add('in');
@@ -110,7 +119,7 @@ window.popup.onData(data => {
 });
 
 window.popup.onCursor(({ x, y }) => {
-  if (editing) return; // pill is parked while the editor is open
+  if (editing || windowed) return; // pill is parked while the editor is open
   setTarget(x, y);
   if (isOverPill(x, y)) {
     enableInteraction();
@@ -124,7 +133,8 @@ function openEditor() {
   if (!promptData) return;
   editing = true;
   pauseAutoDismiss();
-  window.popup.setIgnoreMouse(false); // make the whole overlay interactive for the editor
+  window.popup.setIgnoreMouse(false); // macOS: make the whole overlay interactive for the editor
+  window.popup.enterEditor();          // Windows: grow + center this window so the card fits
   pill.style.display = 'none';
   document.getElementById('ed-title').value = promptData.title || (promptData.text || '').split('\n').find(l => l.trim()) || '';
   document.getElementById('ed-text').value = promptData.text || '';

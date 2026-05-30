@@ -27,6 +27,13 @@ const PICKER_W = 380;
 const PICKER_H = 220;
 const PICKER_HOTKEY = 'CommandOrControl+Shift+K';
 
+// Windows popup — a small topmost window moved to the cursor each tick. Avoids the
+// fullscreen transparent overlay used on macOS, which composites unreliably on Windows.
+const WIN_POPUP_W = 260;
+const WIN_POPUP_H = 48;
+const WIN_EDITOR_W = 580;
+const WIN_EDITOR_H = 380;
+
 let tray = null;
 let searchWindow = null;
 let popupWindow = null;
@@ -80,6 +87,8 @@ let followStream = null; // setInterval handle for posting cursor positions to t
 function showPopup(promptData) {
   if (popupWindow) popupWindow.close();
   stopCursorStream();
+
+  if (process.platform === 'win32') return showPopupWindowed(promptData);
 
   // Cover the entire display the cursor is currently on. We don't span multiple
   // displays because Electron transparent windows + multi-monitor get glitchy.
@@ -145,6 +154,62 @@ function startCursorStream(win) {
 }
 function stopCursorStream() {
   if (followStream) { clearInterval(followStream); followStream = null; }
+}
+
+// Windows path: a small topmost window that the OS moves to the cursor each tick.
+// The renderer pins the pill at a fixed local spot (no per-frame transform) and the
+// editor is shown by resizing this same window — see the popup:enterEditor handler.
+function showPopupWindowed(promptData) {
+  const cursor = screen.getCursorScreenPoint();
+  const win = new BrowserWindow({
+    width: WIN_POPUP_W, height: WIN_POPUP_H,
+    x: cursor.x + CURSOR_OFFSET_X, y: cursor.y + CURSOR_OFFSET_Y,
+    frame: false, alwaysOnTop: true, resizable: false, movable: false,
+    skipTaskbar: true, transparent: true, hasShadow: false,
+    backgroundColor: '#00000000', show: false, focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      backgroundThrottling: false
+    }
+  });
+  popupWindow = win;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  wireDiagnostics(win, 'popup');
+  win.loadFile(path.join(__dirname, 'renderer', 'popup.html'));
+  win.once('ready-to-show', () => {
+    if (win.isDestroyed()) return;
+    win.webContents.send('popup:data', { ...promptData, pillW: PILL_W, pillH: PILL_H, windowed: true });
+    win.showInactive();
+    startWindowFollow(win);
+  });
+  win.on('closed', () => {
+    if (popupWindow === win) popupWindow = null;
+    stopCursorStream();
+  });
+}
+
+function startWindowFollow(win) {
+  stopCursorStream();
+  followStream = setInterval(() => {
+    if (!win || win.isDestroyed()) { stopCursorStream(); return; }
+    if (win.__editing) return; // parked while the editor is open
+    const c = screen.getCursorScreenPoint();
+    const b = win.getBounds();
+    // Stop chasing once the cursor is over the pill so the user can click it.
+    const pad = 6;
+    if (c.x >= b.x - pad && c.x <= b.x + b.width + pad &&
+        c.y >= b.y - pad && c.y <= b.y + b.height + pad) return;
+
+    const wa = screen.getDisplayNearestPoint(c).workArea;
+    let x = c.x + CURSOR_OFFSET_X;
+    let y = c.y + CURSOR_OFFSET_Y;
+    if (x + WIN_POPUP_W > wa.x + wa.width)  x = c.x - WIN_POPUP_W - CURSOR_OFFSET_X;
+    if (y + WIN_POPUP_H > wa.y + wa.height) y = c.y - WIN_POPUP_H - CURSOR_OFFSET_Y;
+    x = Math.max(wa.x, Math.min(x, wa.x + wa.width  - WIN_POPUP_W));
+    y = Math.max(wa.y, Math.min(y, wa.y + wa.height - WIN_POPUP_H));
+    win.setBounds({ x: Math.round(x), y: Math.round(y), width: WIN_POPUP_W, height: WIN_POPUP_H });
+  }, FOLLOW_INTERVAL_MS);
 }
 
 function showPicker() {
@@ -403,6 +468,22 @@ ipcMain.handle('popup:setIgnoreMouse', (_e, ignore) => {
   if (popupWindow && !popupWindow.isDestroyed()) {
     popupWindow.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
   }
+});
+// Windows-only: the pill window is tiny, so opening the inline editor means
+// growing + centering this same window and making it focusable for typing.
+ipcMain.handle('popup:enterEditor', () => {
+  if (process.platform !== 'win32') return;
+  const win = popupWindow;
+  if (!win || win.isDestroyed()) return;
+  win.__editing = true;
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  win.setBounds({
+    x: Math.round(wa.x + (wa.width  - WIN_EDITOR_W) / 2),
+    y: Math.round(wa.y + (wa.height - WIN_EDITOR_H) / 2),
+    width: WIN_EDITOR_W, height: WIN_EDITOR_H
+  });
+  win.setFocusable(true);
+  win.focus();
 });
 
 // ----- Training IPC -----
