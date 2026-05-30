@@ -31,11 +31,11 @@ function verdictColor(v) {
 }
 
 function sourceLabel(s) {
-  return ({ 'claude-code': 'Claude Code', 'grok': 'Grok', 'codex': 'Codex', clipboard: 'Clipboard', hotkey: 'Hotkey', manual: 'Manual' }[s]) || s || 'unknown';
+  return ({ 'claude-code': 'Claude Code', 'grok': 'Grok', 'codex': 'Codex', 'hermes': 'Hermes', clipboard: 'Clipboard', hotkey: 'Hotkey', manual: 'Manual' }[s]) || s || 'unknown';
 }
 
 function sourceShort(s) {
-  return ({ 'claude-code': 'CC', 'grok': 'GR', 'codex': 'CX', clipboard: 'CB', hotkey: 'HK', manual: 'MN' }[s]) || s || '??';
+  return ({ 'claude-code': 'CC', 'grok': 'GR', 'codex': 'CX', 'hermes': 'HM', clipboard: 'CB', hotkey: 'HK', manual: 'MN' }[s]) || s || '??';
 }
 
 // ---- LCS line-level diff (pure JS, no deps) ----
@@ -584,7 +584,7 @@ function updateVerdicts() {
 
 // ---- Module 8: SOURCES ----
 function updateSources() {
-  const sources = ['claude-code', 'grok', 'codex', 'clipboard', 'hotkey', 'manual'];
+  const sources = ['claude-code', 'grok', 'codex', 'hermes', 'clipboard', 'hotkey', 'manual'];
   const counts = sources.map(s => allActivity.filter(r => r.source === s).length);
   const max = Math.max(...counts, 1);
   const total = allActivity.length || 1;

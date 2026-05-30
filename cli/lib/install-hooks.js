@@ -44,6 +44,7 @@ async function wireClaudeCode() {
   list.push({ matcher: '', hooks: [{ type: 'command', command: cmd, timeout: 2 }] });
   fs.writeFileSync(settingsPath, JSON.stringify(cfg, null, 2));
   console.log('  ✓ Claude Code UserPromptSubmit hook wired.');
+  console.log('  · Claude desktop app prompts are also captured automatically (the running app watches ~/.claude/projects).');
 }
 
 // POSIX puts wrappers in ~/.local/bin (conventionally on PATH). Windows has no
@@ -135,6 +136,7 @@ async function installHooks() {
     { name: 'Claude Code', detected: !!which('claude'), wire: wireClaudeCode },
     { name: 'Codex CLI',   detected: !!which('codex'), wire: () => console.log('  · Codex is captured automatically by the running Prompt Vault app (watches ~/.codex/sessions).') },
     { name: 'Grok CLI',    detected: !!which('grok'),  wire: () => console.log('  · Grok is captured automatically by the running Prompt Vault app (watches ~/.grok/sessions).') },
+    { name: 'Hermes Agent', detected: fs.existsSync(path.join(os.homedir(), '.hermes-chat', 'sessions')), wire: () => console.log('  · Hermes is captured automatically by the running Prompt Vault app (watches ~/.hermes-chat/sessions).') },
     { name: 'cursor-agent',detected: !!which('cursor-agent'), wire: () => wireBinaryWrapper('cursor-agent') }
   ];
   for (const t of tools) {

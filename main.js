@@ -8,6 +8,8 @@ const { analyzePrompt, train, modelInfo, findRepetitivePhrases, generateOptimalP
 const dbApi = require('./db');
 const codexWatcher = require('./lib/codex-watcher');
 const grokWatcher = require('./lib/grok-watcher');
+const hermesWatcher = require('./lib/hermes-watcher');
+const claudeCodeWatcher = require('./lib/claude-code-watcher');
 
 const HTTP_PORT = 8765;
 const HOTKEY = 'CommandOrControl+Shift+P';
@@ -186,9 +188,26 @@ function showPicker() {
   pickerWindow.on('closed', () => { pickerWindow = null; });
 }
 
+// Claude Code prompts can arrive twice — once from the UserPromptSubmit hook
+// (CLI) and once from the transcript watcher (which also covers the desktop app).
+// Drop a capture if identical text landed within this window from any source.
+const DEDUP_WINDOW_MS = 15_000;
+const recentlyCaptured = new Map(); // trimmedText -> timestampMs
+
+function isDuplicateCapture(trimmed) {
+  const now = Date.now();
+  for (const [t, ts] of recentlyCaptured) {
+    if (now - ts > DEDUP_WINDOW_MS) recentlyCaptured.delete(t);
+  }
+  if (recentlyCaptured.has(trimmed)) return true;
+  recentlyCaptured.set(trimmed, now);
+  return false;
+}
+
 function offerToSave(text, source, cwd) {
   const trimmed = (text || '').trim();
   if (!trimmed) return;
+  if (isDuplicateCapture(trimmed)) return;
   const analysis = analyzePrompt(trimmed);
   pending = { text: trimmed, source, cwd: cwd || '', analysis };
 
@@ -509,6 +528,8 @@ app.whenReady().then(() => {
   startHttpServer();
   codexWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
   grokWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
+  hermesWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
+  claudeCodeWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
   startTrainingLoop();
 
   if (DEV) createSearchWindow();
