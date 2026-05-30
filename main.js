@@ -381,7 +381,14 @@ ipcMain.handle('popup:skip', () => {
   if (popupWindow) popupWindow.close();
 });
 ipcMain.handle('popup:openVault', () => { if (popupWindow) popupWindow.close(); createSearchWindow(); });
-ipcMain.handle('picker:search', (_e, q) => dbApi.search(q || '').slice(0, 30));
+ipcMain.handle('picker:search', (_e, q) => {
+  // Float pinned prompts to the top so go-to prompts are always one keystroke
+  // away. sort() is stable, so relevance (rank) / recency order is preserved
+  // within the pinned and unpinned groups.
+  const rows = dbApi.search(q || '');
+  rows.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  return rows.slice(0, 30);
+});
 ipcMain.handle('picker:copy', (_e, id, _paste) => {
   const row = dbApi.getById(id);
   if (!row) return false;

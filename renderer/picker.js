@@ -18,6 +18,7 @@ function render() {
       <span class="dot ${verdict}"></span>
       <span class="score">${p.score ?? '--'}</span>
       <span class="label">${escapeHtml(label)}</span>
+      ${p.pinned ? '<span class="pin">📌</span>' : ''}
     </div>`;
   }).join('');
   const active = list.querySelector('.item.active');

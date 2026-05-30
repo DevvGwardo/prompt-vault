@@ -141,13 +141,24 @@ function allPrompts() {
   return db.prepare(`SELECT * FROM prompts ORDER BY created_at DESC`).all();
 }
 
+// Build a safe FTS5 MATCH query from raw user input. Each word becomes a
+// quoted prefix term ("word"*) so search-as-you-type matches partial words,
+// and quoting escapes FTS5 operators that would otherwise throw a syntax error.
+function buildFtsQuery(q) {
+  const tokens = q.match(/[\p{L}\p{N}_]+/gu) || [];
+  if (!tokens.length) return null;
+  return tokens.map(t => `"${t}"*`).join(' ');
+}
+
 function search(q) {
   if (!q || !q.trim()) return allPrompts();
+  const match = buildFtsQuery(q);
+  if (!match) return allPrompts();
   try {
     return db.prepare(`
       SELECT p.* FROM prompts_fts f JOIN prompts p ON p.id = f.rowid
       WHERE prompts_fts MATCH ? ORDER BY rank LIMIT 200
-    `).all(q.trim());
+    `).all(match);
   } catch (e) {
     return allPrompts();
   }
