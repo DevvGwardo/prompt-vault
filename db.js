@@ -224,8 +224,8 @@ function saveRecentCapture({ text, title, source, cwd, score, verdict, reasons }
   stmt.run(text, title || '', source || '', cwd || '', score || 0, verdict || '', serializeReasons(reasons), Date.now());
 }
 
-function getRecentCaptures() {
-  return db.prepare(`SELECT * FROM recent_captures ORDER BY created_at DESC LIMIT 50`).all();
+function getRecentCaptures(limit = 50) {
+  return db.prepare(`SELECT * FROM recent_captures ORDER BY created_at DESC LIMIT ?`).all(limit);
 }
 
 function deleteRecentCapture(id) {

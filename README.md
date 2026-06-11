@@ -22,10 +22,12 @@ Prompt Vault is a local-first desktop app for macOS and Windows that captures th
 
 ## Supported Agents
 
-- Claude Code
-- Codex
+- Claude Code (CLI and desktop app)
+- Codex (CLI and desktop app)
 - Grok
 - Cursor-agent
+- Hermes
+- Anything else, via the clipboard watcher, the global save hotkey, or `pv-capture`
 
 ## Install
 
@@ -43,7 +45,27 @@ npm run dist      # macOS build (run on macOS)
 npm run dist:win  # Windows build (run on Windows)
 ```
 
-Current package version: `0.1.2`
+## Set Up Capture
+
+Codex, Grok, Hermes, and Claude desktop-app prompts are captured automatically while the app is running — it watches their session directories (`~/.codex/sessions`, `~/.grok/sessions`, `~/.hermes-chat/sessions`, `~/.claude/projects`). If a tool isn't installed, its watcher simply stays off.
+
+For the Claude Code CLI and cursor-agent, run the interactive installer from a checkout:
+
+```bash
+node cli/bin/pv.js install-hooks      # wires detected CLIs; prompts before each
+node cli/bin/pv.js uninstall-hooks    # removes everything it added
+```
+
+You can also capture from any tool manually with `hook/pv-capture --source mytool --stdin`.
+
+## Hotkeys
+
+| Shortcut | Action |
+| --- | --- |
+| `Cmd/Ctrl+Shift+P` | Save current clipboard as a prompt |
+| `Cmd/Ctrl+Shift+S` | Quick-save the pending captured prompt |
+| `Cmd/Ctrl+Shift+K` | Quick Pick — search and copy a saved prompt |
+| `Cmd/Ctrl+Shift+V` | Open the vault window |
 
 ## How It Works
 
@@ -51,6 +73,10 @@ Current package version: `0.1.2`
 2. Prompt Vault stores the prompt, metadata, and recent activity in SQLite.
 3. `analyzer.js` scores the prompt and attaches a verdict plus reasons.
 4. The Electron renderer lets you search, inspect, pin, and revisit prompts in the vault UI.
+
+## Data & Uninstall
+
+Everything lives in `~/.prompt-vault/` (override with the `PROMPT_VAULT_DIR` env var) — no cloud, no telemetry. The app also runs a local-only HTTP listener on `127.0.0.1:8765` to receive prompts from hooks. To fully remove Prompt Vault: run `uninstall-hooks` (above), delete the app, and delete `~/.prompt-vault/`.
 
 ## Screenshots
 

@@ -352,6 +352,11 @@ function startHttpServer() {
       }
     });
   });
+  server.on('error', err => {
+    // Don't crash if the port is taken (e.g. another copy was running) —
+    // captures via hook/CLI won't work, but watchers and the UI still do.
+    console.error(`[prompt-vault] http server error: ${err.message}`);
+  });
   server.listen(HTTP_PORT, '127.0.0.1', () => {
     console.log(`[prompt-vault] listening on http://127.0.0.1:${HTTP_PORT}`);
   });
@@ -583,6 +588,12 @@ function startTrainingLoop() {
   // No polling — rebuildModel is called on every label action via vault:train IPC.
   // The model stays continuously fresh without wasteful timer-based rebuilds.
 }
+
+// Single instance — a second launch just opens the vault window in the first.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+app.on('second-instance', () => createSearchWindow());
 
 app.whenReady().then(() => {
   // Hide from dock on macOS — this is a menu-bar app

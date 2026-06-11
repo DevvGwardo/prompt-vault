@@ -4,7 +4,7 @@
 #   "hooks": {
 #     "UserPromptSubmit": [
 #       { "matcher": "", "hooks": [{ "type": "command",
-#         "command": "/Users/devgwardo/prompt-vault-app/hook/prompt-vault-hook.sh" }] }
+#         "command": "/absolute/path/to/prompt-vault/hook/prompt-vault-hook.sh" }] }
 #     ]
 #   }
 #

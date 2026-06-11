@@ -146,7 +146,7 @@ async function installHooks() {
     try { await t.wire(); } catch (err) { console.log(`  ✗ ${t.name}: ${err.message}`); }
   }
   console.log('');
-  console.log('Done. Make sure the Prompt Vault app is running (download from your site).');
+  console.log('Done. Make sure the Prompt Vault app is running (https://github.com/DevvGwardo/prompt-vault/releases).');
 }
 
 function unwireClaudeCode() {
