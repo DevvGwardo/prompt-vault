@@ -10,6 +10,7 @@ const codexWatcher = require('./lib/codex-watcher');
 const grokWatcher = require('./lib/grok-watcher');
 const hermesWatcher = require('./lib/hermes-watcher');
 const claudeCodeWatcher = require('./lib/claude-code-watcher');
+const masAccess = require('./lib/mas-access');
 
 const HTTP_PORT = 8765;
 const HOTKEY = 'CommandOrControl+Shift+P';
@@ -402,6 +403,15 @@ function refreshTrayMenu() {
       refreshTrayMenu();
     }},
     { label: 'Reveal DB in Finder', click: () => shell.showItemInFolder(dbApi.DB_PATH) },
+    // MAS sandbox: watchers need a one-time home-folder grant; offer a retry
+    // here if the user skipped the startup dialog.
+    ...(process.mas && !watchersStarted ? [{
+      label: 'Enable Session Capture…',
+      click: async () => {
+        const home = await masAccess.ensureHomeAccess(dbApi);
+        if (home) { startWatchers(home); refreshTrayMenu(); }
+      }
+    }] : []),
     { type: 'separator' },
     { label: 'Quit Prompt Vault', click: () => { app.isQuitting = true; app.quit(); } }
   ]);
@@ -595,7 +605,17 @@ if (!app.requestSingleInstanceLock()) {
 }
 app.on('second-instance', () => createSearchWindow());
 
-app.whenReady().then(() => {
+let watchersStarted = false;
+function startWatchers(homeDir) {
+  if (watchersStarted) return;
+  watchersStarted = true;
+  codexWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
+  grokWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
+  hermesWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
+  claudeCodeWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
+}
+
+app.whenReady().then(async () => {
   // Hide from dock on macOS — this is a menu-bar app
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
 
@@ -625,10 +645,11 @@ app.whenReady().then(() => {
   });
 
   startHttpServer();
-  codexWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
-  grokWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
-  hermesWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
-  claudeCodeWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd));
+  // MAS sandbox: watchers can only start after the user grants home-folder
+  // access (no-op returning the real home in non-MAS builds).
+  const watchHome = await masAccess.ensureHomeAccess(dbApi);
+  if (watchHome) startWatchers(watchHome);
+  refreshTrayMenu();
   startTrainingLoop();
 
   if (DEV) createSearchWindow();
