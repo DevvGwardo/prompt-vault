@@ -5,8 +5,15 @@ const detail = document.getElementById('detail');
 let current = null;
 let rows = [];
 let allRows = [];
-let allActivity = []; // saved prompts + staged recent captures — used by dashboard aggregates
+let vaultStats = null;
+let recentCaps = [];
 let trainedIds = {}; // promptId -> 'good' | 'bad' | 'implicit_good' | 'implicit_bad'
+let _lastRevision = null;
+let _lastRenderedRevision = null;
+let _lastQuery = '';
+let _dimById = new Map();
+let _listIds = '';
+let _lastDetailKey = '';
 
 function esc(s) {
   return (s || '').replace(/[&<>"']/g, c => ({
@@ -471,7 +478,12 @@ function hideScoreTip() {
 
 // ---- Module 5: ACTIVITY ----
 function updateActivity() {
-  const recent = allActivity.length ? allActivity.reduce((a, b) => a.created_at > b.created_at ? a : b) : null;
+  const stats = vaultStats || {};
+  const cap = recentCaps[0];
+  const row = rows[0];
+  const recent = (row && cap)
+    ? (row.created_at >= cap.created_at ? row : cap)
+    : (row || cap || null);
   if (!recent) {
     document.getElementById('activity-last').textContent = 'No prompts yet';
     document.getElementById('activity-streak').textContent = '';
@@ -481,22 +493,7 @@ function updateActivity() {
   const lastStr = secs < 60 ? 'just now' : secs < 3600 ? `${Math.floor(secs / 60)}m ago` : secs < 86400 ? `${Math.floor(secs / 3600)}h ago` : `${Math.floor(secs / 86400)}d ago`;
   document.getElementById('activity-last').textContent = `${lastStr}  ·  ${sourceLabel(recent.source)}`;
 
-  // Streak: consecutive days (from today backward) with at least one prompt
-  const days = new Set(allActivity.map(r => {
-    const d = new Date(r.created_at);
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  }));
-  let streak = 0;
-  const now = new Date();
-  // adjust for timezone so "today" is correct
-  const tz = now.getTimezoneOffset();
-  const today = Math.floor((now - tz * 60000) / 86400000);
-  for (let i = 0; ; i++) {
-    const dayKey = new Date((today - i) * 86400000 + tz * 60000);
-    const key = `${dayKey.getFullYear()}-${dayKey.getMonth()}-${dayKey.getDate()}`;
-    if (days.has(key)) streak++;
-    else break;
-  }
+  const streak = stats.streak || 0;
   const streakEl = document.getElementById('activity-streak');
   if (streak > 0) {
     streakEl.textContent = `${streak} day${streak === 1 ? '' : 's'} streak`;
@@ -504,67 +501,66 @@ function updateActivity() {
     streakEl.textContent = 'No activity today';
   }
 
-  // Tooltips
   const elMain = document.getElementById('activity-last');
   const elStreak = document.getElementById('activity-streak');
   elMain.className = 'activity-main score-hover';
   elMain.dataset.dimensions = JSON.stringify({ _type:'activity', _head:'Last capture', _label:lastStr, _detail:sourceLabel(recent.source), _extra:recent.title ? esc(recent.title).slice(0, 40) : '' });
   elStreak.className = 'activity-sub mono score-hover';
-  elStreak.dataset.dimensions = JSON.stringify({ _type:'activity', _head:'Streak', _label:streakEl.textContent, _detail:`${allActivity.length} prompts total` });
+  elStreak.dataset.dimensions = JSON.stringify({ _type:'activity', _head:'Streak', _label:streakEl.textContent, _detail:`${stats.total || 0} prompts total` });
 }
 
 // ---- Module 3: STATS ----
 function updateStats() {
-  const total = allActivity.length;
-  const scores = allActivity.filter(r => r.score != null).map(r => r.score);
-  const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-  const cutoff = Date.now() - 7 * 86400e3;
-  const weekCount = allActivity.filter(r => r.created_at >= cutoff).length;
-  const priorCutoff = Date.now() - 14 * 86400e3;
-  const priorWeek = allActivity.filter(r => r.created_at >= priorCutoff && r.created_at < cutoff).length;
-  const delta = priorWeek > 0 ? Math.round((weekCount - priorWeek) / priorWeek * 100) : (weekCount > 0 ? 100 : 0);
+  const stats = vaultStats || {};
+  const total = stats.total || 0;
+  const avg = stats.avgScore != null ? Math.round(stats.avgScore) : 0;
+  const weekCount = stats.week || 0;
 
   document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-avg').textContent = avg + '/100';
-  document.getElementById('stat-week').textContent = weekCount + (delta >= 0 ? ` (+${delta}%)` : ` (${delta}%)`);
+  document.getElementById('stat-week').textContent = String(weekCount);
 
   const elTotal = document.getElementById('stat-total');
   const elAvg = document.getElementById('stat-avg');
   const elWeek = document.getElementById('stat-week');
+  const scored = total > 0 && stats.minScore != null;
 
   elTotal.className = 'stat-value tnum score-hover';
-  elTotal.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Total prompts', _label:'All time', _value:String(total), _detail:scores.length ? `${scores.length} scored` : 'None scored' });
+  elTotal.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Total prompts', _label:'All time', _value:String(total), _detail:scored ? 'All scored' : 'None scored' });
   elAvg.className = 'stat-value tnum score-hover';
-  elAvg.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Average score', _label:'Mean', _value:avg + '/100', _detail:`From ${scores.length} scored prompts`, _extra:scores.length ? `Range: ${Math.min(...scores)}–${Math.max(...scores)}` : '' });
+  elAvg.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Average score', _label:'Mean', _value:avg + '/100', _detail:scored ? 'Vault average' : 'No scores yet', _extra:scored ? `Range: ${stats.minScore}–${stats.maxScore}` : '' });
   elWeek.className = 'stat-value tnum score-hover';
-  elWeek.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Last 7 days', _label:'Captured', _value:String(weekCount), _detail:delta !== 0 ? `${delta >= 0 ? '+' : ''}${delta}% vs prior week` : 'Same as prior week' });
+  elWeek.dataset.dimensions = JSON.stringify({ _type:'stat', _head:'Last 7 days', _label:'Captured', _value:String(weekCount), _detail:'This week' });
 }
 
 // ---- Module 1: VAULT ----
 function updateVault() {
-  const total = allRows.length;
-  const pinned = allRows.filter(r => r.pinned).length;
-  const cutoff = Date.now() - 7 * 86400e3;
-  const week = allRows.filter(r => r.created_at >= cutoff).length;
+  const stats = vaultStats || {};
+  const total = stats.total || 0;
+  const pinned = stats.pinned || 0;
+  const week = stats.week || 0;
   document.getElementById('vault-subhead').textContent =
     `${total} prompts · ${pinned} pinned · ${week} this week`;
 }
 
 let _trainingStatus = null;
 
-async function updateTrainingStatus() {
+async function updateTrainingStatus(version) {
+  if (version != null && version !== _refreshVersion) return;
   try { _trainingStatus = await window.vault.trainingStatus(); } catch { _trainingStatus = null; }
+  if (version != null && version !== _refreshVersion) return;
   const el = document.getElementById('vault-subhead');
-  if (!_trainingStatus || _trainingStatus.labeled < 1) return;
+  if (!el || !_trainingStatus || _trainingStatus.labeled < 1) return;
   el.textContent = el.textContent + `  |  model: ${_trainingStatus.labeled} labeled · ${_trainingStatus.tokens}t/${_trainingStatus.bigrams}b`;
 }
 
 // ---- Module 4: VERDICTS ----
 function updateVerdicts() {
-  const save = allRows.filter(r => r.verdict === 'save').length;
-  const maybe = allRows.filter(r => r.verdict === 'maybe').length;
-  const skip = allRows.filter(r => r.verdict === 'skip').length;
-  const total = allRows.length || 1;
+  const bv = vaultStats?.byVerdict || {};
+  const save = bv.save || 0;
+  const maybe = bv.maybe || 0;
+  const skip = bv.skip || 0;
+  const total = vaultStats?.total || (save + maybe + skip) || 1;
 
   const elSave = document.getElementById('v-save');
   const elMaybe = document.getElementById('v-maybe');
@@ -585,9 +581,10 @@ function updateVerdicts() {
 // ---- Module 8: SOURCES ----
 function updateSources() {
   const sources = ['claude-code', 'grok', 'codex', 'hermes', 'clipboard', 'hotkey', 'manual'];
-  const counts = sources.map(s => allActivity.filter(r => r.source === s).length);
+  const bySource = vaultStats?.bySource || {};
+  const counts = sources.map(s => bySource[s] || 0);
   const max = Math.max(...counts, 1);
-  const total = allActivity.length || 1;
+  const total = vaultStats?.total || counts.reduce((a, b) => a + b, 0) || 1;
   document.getElementById('sources-list').innerHTML = sources.map((s, i) => {
     const dims = JSON.stringify({ _type:'source', _head:'Source', _label:sourceLabel(s), _value:String(counts[i]), _pct:Math.round(counts[i]/total*100) });
     return `<div class="source-item score-hover" data-dimensions='${esc(dims)}'>
@@ -600,12 +597,7 @@ function updateSources() {
 
 // ---- Module 9: TAGS ----
 function updateTags() {
-  const freq = {};
-  allActivity.forEach(r => {
-    (r.tags || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean).forEach(t => {
-      freq[t] = (freq[t] || 0) + 1;
-    });
-  });
+  const freq = vaultStats?.tags || {};
   const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const maxFreq = sorted.length ? sorted[0][1] : 1;
   const cloud = document.getElementById('tags-cloud');
@@ -629,27 +621,21 @@ function updateTags() {
 
 // ---- Module 10: SCORE histogram ----
 function updateHistogram() {
-  const buckets = Array(10).fill(0);
-  const bucketVerdicts = Array.from({ length: 10 }, () => ({ save: 0, maybe: 0, skip: 0 }));
-  allRows.filter(r => r.score != null).forEach(r => {
-    const b = Math.min(9, Math.floor(r.score / 10));
-    buckets[b]++;
-    const v = r.verdict;
-    if (v && bucketVerdicts[b][v] != null) bucketVerdicts[b][v]++;
-  });
+  const raw = vaultStats?.histogram || Array(11).fill(0);
+  const buckets = raw.slice(0, 9).concat([(raw[9] || 0) + (raw[10] || 0)]);
   const max = Math.max(...buckets, 1);
   const total = buckets.reduce((a, b) => a + b, 0);
   const el = document.getElementById('histogram');
   el.innerHTML = buckets.map((c, i) => {
     const pct = total ? Math.round((c / total) * 100) : 0;
-    const vd = bucketVerdicts[i];
+    const rangeEnd = i < 9 ? (i + 1) * 10 : 100;
     const dims = JSON.stringify({
-      _range: `${i * 10}–${(i + 1) * 10}`,
+      _range: `${i * 10}–${rangeEnd}`,
       _count: c,
       _pct: pct,
-      _save: vd.save,
-      _maybe: vd.maybe,
-      _skip: vd.skip
+      _save: 0,
+      _maybe: 0,
+      _skip: 0
     });
     return `<div class="hist-bar score-hover" style="height:${Math.max(4, (c/max) * 100)}%" data-dimensions='${esc(dims)}'></div>`;
   }).join('');
@@ -658,10 +644,12 @@ function updateHistogram() {
 // ---- Module 13: PHRASES ----
 let _phrasesCache = null;
 
-async function updatePhrases() {
+async function updatePhrases(version) {
+  if (version != null && version !== _refreshVersion) return;
   if (!_phrasesCache) {
     try { _phrasesCache = await window.vault.optimalPrompt(); } catch { _phrasesCache = null; }
   }
+  if (version != null && version !== _refreshVersion) return;
   const data = _phrasesCache;
 
   const templateEl = document.getElementById('phrases-template');
@@ -965,8 +953,76 @@ async function renderVersions(promptId) {
   } catch (e) { console.error('[versions] error:', e); }
 }
 
+function listSnippet(r) {
+  const text = (r.text || '').replace(/\n+/g, ' ');
+  return text.length <= 220 ? text : text.slice(0, 200);
+}
+
+function buildListItemHtml(r, i, cutoff) {
+  if (r.dimensions) _dimById.set(r.id, r.dimensions);
+  const scoreAttr = r.dimensions
+    ? ` class="score-hover" data-dim-id="${r.id}"`
+    : '';
+  return `
+    <li data-id="${r.id}" class="${current === r.id ? 'active' : ''}">
+      <div class="pl-row1">
+        <span class="pl-verdict-dot ${verdictColor(r.verdict)}"></span>
+        <span class="pl-title">${esc(r.title || (r.text || '').slice(0, 60))}</span>
+        ${r.pinned ? `<svg class="pl-pin-icon" viewBox="0 0 20 20"><path d="M8 3h4l-.7 4 3.7 3-5 1v5l-2 1-1-6-4-1 2-3z"/></svg>` : ''}
+      </div>
+      <div class="pl-snippet">${esc(listSnippet(r))}</div>
+      <div class="pl-row3 ${i === 0 && r.created_at > cutoff ? 'pl-row-new' : ''}">
+        <span>${sourceShort(r.source)}</span>
+        <span class="pl-sep"></span>
+        <span>${relTime(r.created_at)}</span>
+        <span class="pl-sep"></span>
+        <span style="font-family:'Geist Mono',monospace"${scoreAttr}>${r.score != null ? r.score + '' : '—'}</span>
+      </div>
+    </li>`;
+}
+
+function applyListItem(li, r, i, cutoff) {
+  li.className = current === r.id ? 'active' : '';
+  const dot = li.querySelector('.pl-verdict-dot');
+  if (dot) dot.className = `pl-verdict-dot ${verdictColor(r.verdict)}`;
+  const title = li.querySelector('.pl-title');
+  if (title) title.textContent = r.title || (r.text || '').slice(0, 60);
+  let pin = li.querySelector('.pl-pin-icon');
+  const row1 = li.querySelector('.pl-row1');
+  if (r.pinned) {
+    if (!pin && row1) {
+      row1.insertAdjacentHTML('beforeend', `<svg class="pl-pin-icon" viewBox="0 0 20 20"><path d="M8 3h4l-.7 4 3.7 3-5 1v5l-2 1-1-6-4-1 2-3z"/></svg>`);
+    }
+  } else if (pin) {
+    pin.remove();
+  }
+  const snippet = li.querySelector('.pl-snippet');
+  if (snippet) snippet.textContent = listSnippet(r);
+  const row3 = li.querySelector('.pl-row3');
+  if (row3) {
+    row3.className = `pl-row3 ${i === 0 && r.created_at > cutoff ? 'pl-row-new' : ''}`;
+    const spans = row3.children;
+    if (spans[0]) spans[0].textContent = sourceShort(r.source);
+    if (spans[2]) spans[2].textContent = relTime(r.created_at);
+    const scoreSpan = spans[4];
+    if (scoreSpan) {
+      scoreSpan.textContent = r.score != null ? r.score + '' : '—';
+      if (r.dimensions) {
+        _dimById.set(r.id, r.dimensions);
+        scoreSpan.className = 'score-hover';
+        scoreSpan.dataset.dimId = r.id;
+        delete scoreSpan.dataset.dimensions;
+      } else {
+        scoreSpan.className = '';
+        scoreSpan.removeAttribute('data-dim-id');
+      }
+    }
+  }
+}
+
 function renderList() {
   if (!rows.length) {
+    _listIds = '';
     list.innerHTML = `<li style="cursor:default;padding:20px 12px;color:var(--muted);font-size:13px">
       ${q.value
         ? 'Nothing matches that query. Try a tag or a file path.'
@@ -974,63 +1030,111 @@ function renderList() {
     </li>`;
     return;
   }
-  const cutoff = Date.now() - 60000; // last minute for "new" pulse
-  list.innerHTML = rows.map((r, i) => `
-    <li data-id="${r.id}" class="${current === r.id ? 'active' : ''}">
-      <div class="pl-row1">
-        <span class="pl-verdict-dot ${verdictColor(r.verdict)}"></span>
-        <span class="pl-title">${esc(r.title || r.text.slice(0, 60))}</span>
-        ${r.pinned ? `<svg class="pl-pin-icon" viewBox="0 0 20 20"><path d="M8 3h4l-.7 4 3.7 3-5 1v5l-2 1-1-6-4-1 2-3z"/></svg>` : ''}
-      </div>
-      <div class="pl-snippet">${esc(r.text.replace(/\n+/g, ' ').slice(0, 200))}</div>
-      <div class="pl-row3 ${i === 0 && r.created_at > cutoff ? 'pl-row-new' : ''}">
-        <span>${sourceShort(r.source)}</span>
-        <span class="pl-sep"></span>
-        <span>${relTime(r.created_at)}</span>
-        <span class="pl-sep"></span>
-        <span style="font-family:'Geist Mono',monospace"${r.dimensions ? ` class="score-hover" data-dimensions='${esc(r.dimensions)}'` : ''}>${r.score != null ? r.score + '' : '—'}</span>
-      </div>
-    </li>
-  `).join('');
+  const cutoff = Date.now() - 60000;
+  const ids = rows.map(r => r.id).join(',');
+  if (ids === _listIds) {
+    const liMap = new Map([...list.querySelectorAll('li[data-id]')].map(li => [Number(li.dataset.id), li]));
+    rows.forEach((r, i) => {
+      const li = liMap.get(r.id);
+      if (li) applyListItem(li, r, i, cutoff);
+    });
+    return;
+  }
+  const scrollTop = list.scrollTop;
+  _listIds = ids;
+  list.innerHTML = rows.map((r, i) => buildListItemHtml(r, i, cutoff)).join('');
+  list.scrollTop = scrollTop;
 }
 
 // ---- Main refresh ----
 let _refreshVersion = 0;
 
-async function refresh() {
-  _phrasesCache = null; // invalidate so new prompts are reflected
+function detailKey(row) {
+  if (!row) return '';
+  return [row.id, row.text, row.title || '', row.tags || '', row.score, row.pinned, row.verdict].join('\0');
+}
+
+function isUserEditing() {
+  const editBtn = document.getElementById('a-edit');
+  return (editBtn && editBtn.dataset.mode === 'save') || !!document.querySelector('.edit-textarea');
+}
+
+function isTextTruncated(text) {
+  if (!text) return false;
+  return text.replace(/\n+/g, ' ').length >= 220;
+}
+
+async function refresh(opts = {}) {
+  const { force = false } = opts;
+  const query = q.value;
   const version = ++_refreshVersion;
   list.classList.add('loading');
   try {
-    const [searched, labelList, recentCaps, all] = await Promise.all([
-      window.vault.search(q.value),
+    const [listRes, stats, labelMap, caps] = await Promise.all([
+      window.vault.list({ q: query, limit: 200 }),
+      window.vault.stats(),
       window.vault.trainLabels(),
-      window.vault.recentCaptures(),
-      window.vault.all()
+      window.vault.recentCaptures(50)
     ]);
-    trainedIds = {};
-    for (const l of labelList) trainedIds[l.prompt_id] = l.label;
-    if (version !== _refreshVersion) return; // stale, a newer refresh is already in-flight
-    rows = searched;
-    allRows = all;
-    // Dashboard aggregates also count staged captures (skipped/maybe prompts not yet
-    // promoted to the vault). Captures have no tags/pinned columns — normalize them.
-    allActivity = allRows.concat((recentCaps || []).map(c => ({ ...c, tags: '', pinned: 0, _capture: true })));
     if (version !== _refreshVersion) return;
+
+    if (!force && stats.revision === _lastRenderedRevision && query === _lastQuery) {
+      _lastRevision = stats.revision;
+      return;
+    }
+
+    trainedIds = labelMap || {};
+    rows = listRes.rows || [];
+    allRows = query ? allRows : rows;
+    vaultStats = stats;
+    window._vaultStats = stats;
+    recentCaps = caps || [];
+    _lastRevision = stats.revision;
+
     updateVault();
-    updateTrainingStatus();
+    await updateTrainingStatus(version);
+    if (version !== _refreshVersion) return;
     updateStats();
     updateVerdicts();
     updateSources();
     updateTags();
     updateHistogram();
     updateActivity();
-    updatePhrases();
+    await updatePhrases(version);
+    if (version !== _refreshVersion) return;
     renderList();
-    if (current) renderDetail(rows.find(r => r.id === current) || null);
-    else renderDetail(null);
-    // A re-render via innerHTML can destroy the hovered node before mouseleave
-    // fires, orphaning the tooltip. Drop it if its anchor is gone.
+
+    if (current) {
+      if (!isUserEditing()) {
+        let row = rows.find(r => r.id === current);
+        if (row) {
+          if (isTextTruncated(row.text)) {
+            try {
+              const full = await window.vault.get(current);
+              if (version !== _refreshVersion) return;
+              if (full) row = full;
+            } catch {}
+          }
+          const key = detailKey(row);
+          if (key !== _lastDetailKey) {
+            renderDetail(row);
+            _lastDetailKey = key;
+          }
+        } else {
+          renderDetail(null);
+          _lastDetailKey = '';
+        }
+      }
+    } else {
+      renderDetail(null);
+      _lastDetailKey = '';
+    }
+
+    _lastRenderedRevision = stats.revision;
+    _lastQuery = query;
+
+    if (_activeTab === 'recent') renderRecentCaptures();
+
     if (_tipActive && !document.contains(_tipActive)) {
       _tipActive = null;
       scoreTip.classList.remove('visible');
@@ -1038,7 +1142,7 @@ async function refresh() {
   } catch (e) {
     console.error('[vault] refresh error:', e);
   } finally {
-    list.classList.remove('loading');
+    if (version === _refreshVersion) list.classList.remove('loading');
   }
 }
 
@@ -1049,7 +1153,7 @@ async function renderRecentCaptures() {
   const el = document.getElementById('recent-captures');
   if (!el) return;
   try {
-    const items = await window.vault.recentCaptures();
+    const items = recentCaps.length ? recentCaps : await window.vault.recentCaptures(50);
     if (!items || !items.length) {
       el.innerHTML = `<div class="detail-empty"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg><div>No recent captures yet.</div><div class="de-hint">Skipped prompts will appear here.</div></div>`;
       return;
@@ -1098,7 +1202,7 @@ async function renderRecentCaptures() {
         e.stopPropagation();
         const id = Number(btn.closest('.recent-item').dataset.id);
         await window.vault.deleteRecent(id);
-        renderRecentCaptures();
+        refresh({ force: true });
       };
     });
   } catch (e) { console.error('[recent] error:', e); }
@@ -1127,21 +1231,30 @@ document.querySelector('.detail-tabs')?.addEventListener('click', e => {
 });
 
 // ---- Events ----
-list.addEventListener('click', e => {
+list.addEventListener('click', async e => {
   const li = e.target.closest('li[data-id]');
   if (!li) return;
   current = Number(li.dataset.id);
   document.querySelectorAll('#list li').forEach(x =>
     x.classList.toggle('active', Number(x.dataset.id) === current));
   li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  renderDetail(rows.find(r => r.id === current));
+  let row = rows.find(r => r.id === current);
+  if (row && isTextTruncated(row.text)) {
+    try {
+      const full = await window.vault.get(current);
+      if (full) row = full;
+    } catch (err) { console.error('[vault] get error:', err); }
+  }
+  renderDetail(row);
+  _lastDetailKey = detailKey(row);
 });
 
 // Score hover tooltips — event delegation on the whole document
 document.addEventListener('mouseenter', e => {
   const el = e.target.closest?.('.score-hover');
   if (!el) return;
-  const dims = el.dataset.dimensions;
+  let dims = el.dataset.dimensions;
+  if (!dims && el.dataset.dimId) dims = _dimById.get(Number(el.dataset.dimId));
   if (dims) showScoreTip(e, dims);
 }, true);
 
@@ -1154,36 +1267,66 @@ document.addEventListener('mouseleave', e => {
 }, true);
 
 let t;
-q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(refresh, 100); });
+q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(refresh, 180); });
 
 document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); q.select(); }
   if (e.key === 'Escape' && document.activeElement === q) { q.value = ''; refresh(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'c' && current && window.getSelection().toString() === '') {
-    const row = rows.find(r => r.id === current);
-    if (row) window.vault.copy(row.text);
+    e.preventDefault();
+    (async () => {
+      let row = rows.find(r => r.id === current);
+      if (row && isTextTruncated(row.text)) {
+        try {
+          const full = await window.vault.get(current);
+          if (full) row = full;
+        } catch {}
+      }
+      if (row) window.vault.copy(row.text);
+    })();
   }
 });
 
-// ---- Initial load + visibility-aware polling ----
-let _pollTimer = null;
+// ---- Initial load + push updates + visibility-aware fallback probe ----
+let _fallbackTimer = null;
+let _unsubscribeChanged = null;
 
-function startPolling() {
-  stopPolling();
-  refresh();
-  _pollTimer = setInterval(refresh, 4000);
+function invalidatePhrasesForReason(reason) {
+  if (reason === 'train' || reason === 'reanalyze' || reason === 'scores'
+      || reason === 'create' || reason === 'update' || reason === 'delete') {
+    _phrasesCache = null;
+  }
 }
 
-function stopPolling() {
-  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+function startFallbackProbe() {
+  stopFallbackProbe();
+  _fallbackTimer = setInterval(async () => {
+    try {
+      const rev = await window.vault.revision();
+      if (rev !== _lastRevision) refresh({ force: true });
+    } catch (e) { /* ignore probe errors */ }
+  }, 30000);
+}
+
+function stopFallbackProbe() {
+  if (_fallbackTimer) { clearInterval(_fallbackTimer); _fallbackTimer = null; }
+}
+
+if (!_unsubscribeChanged) {
+  _unsubscribeChanged = window.vault.onChanged(({ reason, revision }) => {
+    invalidatePhrasesForReason(reason);
+    if (revision) _lastRevision = revision;
+    refresh({ force: true });
+  });
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { stopPolling(); }
-  else { startPolling(); }
+  if (document.hidden) stopFallbackProbe();
+  else startFallbackProbe();
 });
 
-window.addEventListener('blur', stopPolling);
-window.addEventListener('focus', startPolling);
+window.addEventListener('blur', stopFallbackProbe);
+window.addEventListener('focus', startFallbackProbe);
 
-startPolling();
+startFallbackProbe();
+refresh({ force: true });

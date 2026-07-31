@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const { analyzePrompt, train, modelInfo, findRepetitivePhrases, generateOptimalPrompt } = require('./analyzer');
 const dbApi = require('./db');
 const codexWatcher = require('./lib/codex-watcher');
@@ -43,8 +44,16 @@ let pending = null; // { text, source, cwd, analysis }
 let lastClipboard = '';
 let clipboardWatcher = null;
 let clipboardEnabled = false;
+let watcherStops = []; // teardown fns from session watchers
 
 const DEV = !!process.env.PV_DEV || !app.isPackaged;
+
+function notifyVaultChanged(reason, meta = {}) {
+  const payload = { reason, revision: dbApi.getRevision(), count: dbApi.count(), ...meta };
+  if (searchWindow && !searchWindow.isDestroyed()) {
+    searchWindow.webContents.send('vault:changed', payload);
+  }
+}
 
 // Forward renderer console + errors to the main-process log so they appear in the terminal.
 function wireDiagnostics(win, label) {
@@ -256,17 +265,38 @@ function showPicker() {
 
 // Claude Code prompts can arrive twice — once from the UserPromptSubmit hook
 // (CLI) and once from the transcript watcher (which also covers the desktop app).
-// Drop a capture if identical text landed within this window from any source.
+// Hash of normalized text covers whitespace + <user_query> wrapper drift across sources.
 const DEDUP_WINDOW_MS = 15_000;
-const recentlyCaptured = new Map(); // trimmedText -> timestampMs
+const dedupeCache = new Map(); // hash -> expiresAt
 
-function isDuplicateCapture(trimmed) {
-  const now = Date.now();
-  for (const [t, ts] of recentlyCaptured) {
-    if (now - ts > DEDUP_WINDOW_MS) recentlyCaptured.delete(t);
+function normalizeForDedupe(text) {
+  let t = (text || '').trim().replace(/\s+/g, ' ');
+  const infoEnd = t.indexOf('</user_info>');
+  if (infoEnd !== -1) t = t.slice(infoEnd + '</user_info>'.length).trim();
+  const qOpen = t.indexOf('<user_query>');
+  const qClose = t.lastIndexOf('</user_query>');
+  if (qOpen !== -1 && qClose !== -1) {
+    t = t.slice(qOpen + '<user_query>'.length, qClose).trim();
   }
-  if (recentlyCaptured.has(trimmed)) return true;
-  recentlyCaptured.set(trimmed, now);
+  return t.replace(/\s+/g, ' ');
+}
+
+function dedupeHash(text) {
+  return crypto.createHash('sha256').update(normalizeForDedupe(text)).digest('hex').slice(0, 16);
+}
+
+function isDuplicateCapture(text) {
+  const hash = dedupeHash(text);
+  const now = Date.now();
+  const exp = dedupeCache.get(hash);
+  if (exp && exp > now) return true;
+  dedupeCache.set(hash, now + DEDUP_WINDOW_MS);
+  // Opportunistic prune — cheap because Map is small under normal use
+  if (dedupeCache.size > 200) {
+    for (const [h, e] of dedupeCache) {
+      if (e <= now) dedupeCache.delete(h);
+    }
+  }
   return false;
 }
 
@@ -288,6 +318,7 @@ function offerToSave(text, source, cwd) {
       reasons: analysis.reasons
     });
     pending = null;
+    notifyVaultChanged('recent');
     return;
   }
 
@@ -311,6 +342,7 @@ function saveCurrentPending(overrides = {}) {
   dbApi.saveTrainingLabel(id, 'implicit_good');
   pending = null;
   refreshTrayMenu();
+  notifyVaultChanged('create', { id });
   // Bubble confirmation via tray title
   if (tray) { tray.setTitle('✓ Saved'); setTimeout(() => tray && tray.setTitle('PV'), 1200); }
   return id;
@@ -320,7 +352,8 @@ function saveCurrentPending(overrides = {}) {
 function startHttpServer() {
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/status') {
-      const recent = dbApi.search('').slice(0, 5).map(p => ({
+      const { rows } = dbApi.listPrompts({ limit: 5, fullText: true });
+      const recent = rows.map(p => ({
         score: p.score, title: p.title, text: p.text
       }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -330,7 +363,8 @@ function startHttpServer() {
       const u = new URL(req.url, 'http://127.0.0.1');
       const q = u.searchParams.get('q') || '';
       const limit = Math.min(parseInt(u.searchParams.get('limit') || '20', 10) || 20, 100);
-      const results = dbApi.search(q, limit).map(p => ({
+      const { rows } = dbApi.listPrompts({ q, limit, fullText: true });
+      const results = rows.map(p => ({
         id: p.id, score: p.score, title: p.title, source: p.source, text: p.text
       }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -369,13 +403,25 @@ function setClipboardMonitor(enabled) {
   if (clipboardWatcher) { clearInterval(clipboardWatcher); clipboardWatcher = null; }
   if (!enabled) return;
   lastClipboard = clipboard.readText();
-  clipboardWatcher = setInterval(() => {
+  const intervalMs = () => {
+    // Slow down when no vault window is focused — cuts idle IPC churn
+    if (!searchWindow || searchWindow.isDestroyed() || !searchWindow.isFocused()) return 4000;
+    return 2000;
+  };
+  const tick = () => {
     const cur = clipboard.readText();
     if (cur && cur !== lastClipboard && cur.length > 40) {
       lastClipboard = cur;
       offerToSave(cur, 'clipboard');
-    } else { lastClipboard = cur; }
-  }, 1500);
+    } else {
+      lastClipboard = cur;
+    }
+    if (clipboardWatcher) {
+      clearInterval(clipboardWatcher);
+      clipboardWatcher = setInterval(tick, intervalMs());
+    }
+  };
+  clipboardWatcher = setInterval(tick, intervalMs());
   refreshTrayMenu();
 }
 
@@ -401,6 +447,7 @@ function refreshTrayMenu() {
       if (tray) tray.setTitle(`✓ ${result.changed} upd`);
       setTimeout(() => tray && tray.setTitle('PV'), 1500);
       refreshTrayMenu();
+      notifyVaultChanged('reanalyze', { changed: result.changed });
     }},
     { label: 'Reveal DB in Finder', click: () => shell.showItemInFolder(dbApi.DB_PATH) },
     // MAS sandbox: watchers need a one-time home-folder grant; offer a retry
@@ -426,26 +473,49 @@ function saveClipboardManual() {
 }
 
 // ----- IPC from renderer -----
-ipcMain.handle('vault:search', (_e, q) => dbApi.search(q));
-ipcMain.handle('vault:all', () => dbApi.allPrompts());
+ipcMain.handle('vault:search', (_e, q) => {
+  const { rows } = dbApi.listPrompts({ q, limit: 200, fullText: false });
+  return rows;
+});
+ipcMain.handle('vault:list', (_e, opts) => dbApi.listPrompts(opts || {}));
+ipcMain.handle('vault:all', () => {
+  const { rows } = dbApi.listPrompts({ limit: 500, fullText: false });
+  return rows;
+});
 ipcMain.handle('vault:get', (_e, id) => dbApi.getById(id));
-ipcMain.handle('vault:delete', (_e, id) => { dbApi.deletePrompt(id); refreshTrayMenu(); return true; });
-ipcMain.handle('vault:pin', (_e, id) => dbApi.togglePin(id));
-ipcMain.handle('vault:update', (_e, id, fields) => dbApi.updatePrompt(id, fields));
+ipcMain.handle('vault:delete', (_e, id) => {
+  dbApi.deletePrompt(id);
+  refreshTrayMenu();
+  notifyVaultChanged('delete', { id });
+  return true;
+});
+ipcMain.handle('vault:pin', (_e, id) => {
+  const row = dbApi.togglePin(id);
+  notifyVaultChanged('pin', { id });
+  return row;
+});
+ipcMain.handle('vault:update', (_e, id, fields) => {
+  const row = dbApi.updatePrompt(id, fields);
+  notifyVaultChanged('update', { id });
+  return row;
+});
 ipcMain.handle('vault:versions', (_e, id) => dbApi.getVersions(id));
 ipcMain.handle('vault:restore-version', (_e, versionId) => {
   if (!versionId || !Number.isInteger(versionId)) return null;
-  return dbApi.restoreVersion(versionId);
+  const row = dbApi.restoreVersion(versionId);
+  if (row) notifyVaultChanged('update', { id: row.id });
+  return row;
 });
 ipcMain.handle('vault:delete-version', (_e, versionId) => {
   if (!versionId || !Number.isInteger(versionId)) return null;
   return dbApi.deleteVersion(versionId);
 });
 ipcMain.handle('vault:count', () => dbApi.count());
+ipcMain.handle('vault:revision', () => dbApi.getRevision());
+ipcMain.handle('vault:stats', () => dbApi.getVaultStats());
 ipcMain.handle('vault:copy', (_e, text) => { clipboard.writeText(text); return true; });
 ipcMain.handle('popup:save', (_e, overrides) => { const id = saveCurrentPending(overrides); if (popupWindow) popupWindow.close(); return id; });
 ipcMain.handle('popup:skip', () => {
-  // Save skipped prompt to recent captures so the user can save it later
   if (pending) {
     dbApi.saveRecentCapture({
       text: pending.text,
@@ -456,25 +526,21 @@ ipcMain.handle('popup:skip', () => {
       verdict: pending.analysis.verdict,
       reasons: pending.analysis.reasons
     });
+    notifyVaultChanged('recent');
   }
   pending = null;
   if (popupWindow) popupWindow.close();
 });
 ipcMain.handle('popup:openVault', () => { if (popupWindow) popupWindow.close(); createSearchWindow(); });
 ipcMain.handle('picker:search', (_e, q) => {
-  // Float pinned prompts to the top so go-to prompts are always one keystroke
-  // away. sort() is stable, so relevance (rank) / recency order is preserved
-  // within the pinned and unpinned groups.
-  const rows = dbApi.search(q || '');
-  rows.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
-  return rows.slice(0, 30);
+  const { rows } = dbApi.listPrompts({ q: q || '', limit: 30, fullText: true });
+  return rows;
 });
 ipcMain.handle('picker:copy', (_e, id, _paste) => {
   const row = dbApi.getById(id);
   if (!row) return false;
   clipboard.writeText(row.text);
   if (pickerWindow) pickerWindow.close();
-  // Flash the tray title as confirmation
   if (tray) { tray.setTitle('✓'); setTimeout(() => tray && tray.setTitle('PV'), 800); }
   return true;
 });
@@ -484,8 +550,6 @@ ipcMain.handle('popup:setIgnoreMouse', (_e, ignore) => {
     popupWindow.setIgnoreMouseEvents(!!ignore, ignore ? { forward: true } : undefined);
   }
 });
-// Windows-only: the pill window is tiny, so opening the inline editor means
-// growing + centering this same window and making it focusable for typing.
 ipcMain.handle('popup:enterEditor', () => {
   if (process.platform !== 'win32') return;
   const win = popupWindow;
@@ -509,6 +573,7 @@ ipcMain.handle('vault:train', (_e, id, label) => {
     dbApi.saveTrainingLabel(id, label);
   }
   rebuildModel();
+  notifyVaultChanged('train', { id });
   return true;
 });
 ipcMain.handle('vault:train-stats', () => {
@@ -516,16 +581,17 @@ ipcMain.handle('vault:train-stats', () => {
   const model = modelInfo();
   return { labels: labels.length, tokens: model ? model.tokens : 0, good: model ? model.totalGood : 0, bad: model ? model.totalBad : 0 };
 });
-ipcMain.handle('vault:train-labels', () => {
-  const labels = dbApi.getTrainingLabels();
-  return labels.map(l => ({ prompt_id: l.id || l.prompt_id, label: l.label }));
-});
+ipcMain.handle('vault:train-labels', () => dbApi.getTrainingLabelMap());
 ipcMain.handle('vault:phrases', () => {
   const texts = dbApi.allTexts();
   return findRepetitivePhrases(texts);
 });
 ipcMain.handle('vault:optimal-prompt', () => {
-  const prompts = dbApi.allPrompts();
+  let prompts = dbApi.getTopPromptsForTemplate({ minScore: 65, limit: 40 });
+  if (prompts.length < 1) {
+    const { rows } = dbApi.listPrompts({ limit: 100, fullText: true });
+    prompts = rows;
+  }
   return generateOptimalPrompt(prompts);
 });
 ipcMain.handle('vault:share-image', async (_e, base64, promptId) => {
@@ -537,9 +603,9 @@ ipcMain.handle('vault:share-image', async (_e, base64, promptId) => {
   shell.showItemInFolder(filepath);
   return filepath;
 });
-ipcMain.handle('vault:recent-captures', (_e, limit) => dbApi.getRecentCaptures(limit || 500));
+ipcMain.handle('vault:recent-captures', (_e, limit) => dbApi.getRecentCaptures(limit || 50));
 ipcMain.handle('vault:save-recent', (_e, id) => {
-  const row = dbApi.getRecentCaptures(100).find(r => r.id === id);
+  const row = dbApi.getRecentCaptureById(id);
   if (!row) return null;
   const newId = dbApi.createPrompt({
     text: row.text, title: row.title, source: row.source, cwd: row.cwd,
@@ -547,21 +613,24 @@ ipcMain.handle('vault:save-recent', (_e, id) => {
   }).id;
   dbApi.deleteRecentCapture(id);
   refreshTrayMenu();
+  notifyVaultChanged('create', { id: newId });
   return newId;
 });
 ipcMain.handle('vault:delete-recent', (_e, id) => {
   dbApi.deleteRecentCapture(id);
+  notifyVaultChanged('recent', { id });
   return true;
 });
 ipcMain.handle('vault:reanalyze', () => {
   const result = dbApi.reanalyzeAll(analyzePrompt);
+  notifyVaultChanged('reanalyze', { changed: result.changed });
   return result;
 });
 ipcMain.handle('vault:training-status', () => {
-  const labels = dbApi.getTrainingLabels();
+  const labeled = Object.keys(dbApi.getTrainingLabelMap()).length;
   const model = modelInfo();
   return {
-    labeled: labels.length,
+    labeled,
     good: model ? model.totalGood : 0,
     bad: model ? model.totalBad : 0,
     tokens: model ? model.tokens : 0,
@@ -584,19 +653,15 @@ function rebuildModel() {
     totalBad: m.totalBad,
     version: m.version
   });
-  // Re-score all prompts so stats reflect the latest training immediately
   dbApi.reanalyzeAll(analyzePrompt);
   return m;
 }
 
 function startTrainingLoop() {
-  // Load persisted model into analyzer on startup, then re-score everything
   const saved = dbApi.getTrainModel();
   if (saved) {
     rebuildModel();
   }
-  // No polling — rebuildModel is called on every label action via vault:train IPC.
-  // The model stays continuously fresh without wasteful timer-based rebuilds.
 }
 
 // Single instance — a second launch just opens the vault window in the first.
@@ -609,10 +674,21 @@ let watchersStarted = false;
 function startWatchers(homeDir) {
   if (watchersStarted) return;
   watchersStarted = true;
-  codexWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
-  grokWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
-  hermesWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
-  claudeCodeWatcher.start((text, meta) => offerToSave(text, meta.source, meta.cwd), homeDir);
+  const onPrompt = (text, meta) => offerToSave(text, meta.source, meta.cwd);
+  watcherStops = [
+    codexWatcher.start(onPrompt, homeDir),
+    grokWatcher.start(onPrompt, homeDir),
+    hermesWatcher.start(onPrompt, homeDir),
+    claudeCodeWatcher.start(onPrompt, homeDir)
+  ].filter(fn => typeof fn === 'function');
+}
+
+function stopWatchers() {
+  for (const stop of watcherStops) {
+    try { stop(); } catch {}
+  }
+  watcherStops = [];
+  watchersStarted = false;
 }
 
 app.whenReady().then(async () => {
@@ -656,4 +732,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', e => { /* keep running in tray */ });
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+  stopWatchers();
+  globalShortcut.unregisterAll();
+});

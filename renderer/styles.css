@@ -330,6 +330,8 @@ input, textarea { outline: none; }
   margin-bottom: 3px;
   border: 1px solid transparent;
   transition: background .12s;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
 }
 .prompt-list li:hover { background: var(--module-hi); }
 .prompt-list li.active {

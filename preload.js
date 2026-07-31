@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('vault', {
   search: q => ipcRenderer.invoke('vault:search', q),
+  list: opts => ipcRenderer.invoke('vault:list', opts),
   all: () => ipcRenderer.invoke('vault:all'),
   get: id => ipcRenderer.invoke('vault:get', id),
   delete: id => ipcRenderer.invoke('vault:delete', id),
@@ -11,6 +12,8 @@ contextBridge.exposeInMainWorld('vault', {
   restoreVersion: vid => ipcRenderer.invoke('vault:restore-version', vid),
   deleteVersion: vid => ipcRenderer.invoke('vault:delete-version', vid),
   count: () => ipcRenderer.invoke('vault:count'),
+  revision: () => ipcRenderer.invoke('vault:revision'),
+  stats: () => ipcRenderer.invoke('vault:stats'),
   copy: text => ipcRenderer.invoke('vault:copy', text),
   train: (id, label) => ipcRenderer.invoke('vault:train', id, label),
   trainStats: () => ipcRenderer.invoke('vault:train-stats'),
@@ -18,11 +21,16 @@ contextBridge.exposeInMainWorld('vault', {
   phrases: () => ipcRenderer.invoke('vault:phrases'),
   optimalPrompt: () => ipcRenderer.invoke('vault:optimal-prompt'),
   shareImage: (base64, promptId) => ipcRenderer.invoke('vault:share-image', base64, promptId),
-  recentCaptures: () => ipcRenderer.invoke('vault:recent-captures'),
+  recentCaptures: (limit) => ipcRenderer.invoke('vault:recent-captures', limit),
   saveRecent: (id) => ipcRenderer.invoke('vault:save-recent', id),
   deleteRecent: (id) => ipcRenderer.invoke('vault:delete-recent', id),
   reanalyze: () => ipcRenderer.invoke('vault:reanalyze'),
-  trainingStatus: () => ipcRenderer.invoke('vault:training-status')
+  trainingStatus: () => ipcRenderer.invoke('vault:training-status'),
+  onChanged: (cb) => {
+    const fn = (_e, data) => cb(data);
+    ipcRenderer.on('vault:changed', fn);
+    return () => ipcRenderer.removeListener('vault:changed', fn);
+  }
 });
 
 contextBridge.exposeInMainWorld('picker', {
