@@ -112,6 +112,8 @@
     }
   },
   "overrides": {
-    "node-gyp": "^13.0.1"
+    "app-builder-lib": {
+      "@electron/rebuild": "3.7.2"
+    }
   }
 }
