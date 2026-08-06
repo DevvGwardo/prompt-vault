@@ -27,8 +27,8 @@ jobs:
           # `if !` keeps the failure inside the condition so set -e cannot kill
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
-            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
-            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000)
+            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000 || true)
             echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
             exit 1
           fi
@@ -50,10 +50,16 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --arm64 --x64 --publish always
+        run: |
+          if ! npx electron-builder --mac --arm64 --x64 --publish always > /tmp/build.log 2>&1; then
+            ERRS=$(grep -m 12 -E "error|failed|ENOENT|EPERM|not found|code sign|notariz|xcrun|cannot" /tmp/build.log | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -c 8000 /tmp/build.log | tr '\n' ' ' | cut -c1-8000 || true)
+            echo "::error::mac build failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
+            exit 1
+          fi
 
   release-win:
-    runs-on: windows-latest
+    runs-on: windows-2022  # VS 2022; node-gyp 10.2 cannot parse VS 18 on windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -70,8 +76,8 @@ jobs:
           # `if !` keeps the failure inside the condition so set -e cannot kill
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
-            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
-            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000)
+            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000 || true)
             echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
             exit 1
           fi
@@ -88,4 +94,10 @@ jobs:
       - name: Build and publish (Windows)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --x64 --publish always
+        run: |
+          if ! npx electron-builder --win --x64 --publish always > /tmp/build.log 2>&1; then
+            ERRS=$(grep -m 12 -E "error|failed|ENOENT|EPERM|not found|cannot" /tmp/build.log | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -c 8000 /tmp/build.log | tr '\n' ' ' | cut -c1-8000 || true)
+            echo "::error::win build failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
+            exit 1
+          fi
