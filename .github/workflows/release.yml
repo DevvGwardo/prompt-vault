@@ -22,10 +22,15 @@ jobs:
           cache: npm
 
       - name: npm ci
-        run: npm ci --no-audit --no-fund --foreground-scripts
+        run: |
+          npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
+            echo "::error::npm ci exit $rc — $MSG"
+            exit $rc
+          fi
 
-      - name: Dump failure detail to annotation
-        if: failure()
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
@@ -62,10 +67,15 @@ jobs:
           cache: npm
 
       - name: npm ci
-        run: npm ci --no-audit --no-fund --foreground-scripts
+        run: |
+          npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
+            echo "::error::npm ci exit $rc — $MSG"
+            exit $rc
+          fi
 
-      - name: Dump failure detail to annotation
-        if: failure()
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
