@@ -23,12 +23,12 @@ jobs:
 
       - name: npm ci
         run: |
-          npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1
-          rc=$?
-          if [ $rc -ne 0 ]; then
+          # `if !` keeps the failure inside the condition so set -e cannot kill
+          # the step before the annotation is emitted.
+          if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
             MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
-            echo "::error::npm ci exit $rc — $MSG"
-            exit $rc
+            echo "::error::npm ci failed - $MSG"
+            exit 1
           fi
 
 
@@ -56,12 +56,12 @@ jobs:
 
       - name: npm ci
         run: |
-          npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1
-          rc=$?
-          if [ $rc -ne 0 ]; then
+          # `if !` keeps the failure inside the condition so set -e cannot kill
+          # the step before the annotation is emitted.
+          if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
             MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
-            echo "::error::npm ci exit $rc — $MSG"
-            exit $rc
+            echo "::error::npm ci failed - $MSG"
+            exit 1
           fi
 
 
