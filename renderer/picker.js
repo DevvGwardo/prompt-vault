@@ -35,9 +35,9 @@ async function search(query) {
   render();
 }
 
-async function copyAndClose(autoPaste) {
+async function copyAndClose() {
   if (!items[cursor]) return;
-  await window.picker.copy(items[cursor].id, !!autoPaste);
+  await window.picker.copy(items[cursor].id);
 }
 
 q.addEventListener('input', () => search(q.value));
@@ -46,7 +46,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') return window.picker.close();
   if (e.key === 'ArrowDown') { cursor = Math.min(items.length - 1, cursor + 1); render(); e.preventDefault(); }
   if (e.key === 'ArrowUp')   { cursor = Math.max(0, cursor - 1); render(); e.preventDefault(); }
-  if (e.key === 'Enter')     { copyAndClose(e.shiftKey); e.preventDefault(); }
+  if (e.key === 'Enter')     { copyAndClose(); e.preventDefault(); }
 });
 
 list.addEventListener('click', e => {
@@ -54,7 +54,7 @@ list.addEventListener('click', e => {
   if (!el) return;
   cursor = Number(el.dataset.i);
   render();
-  copyAndClose(false);
+  copyAndClose();
 });
 
 search('');

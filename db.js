@@ -10,6 +10,9 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Keep only the newest captures — the table is append-only and would grow forever.
+const RECENT_KEEP = 200;
+
 // ---- Prompts table ----
 db.exec(`
   CREATE TABLE IF NOT EXISTS prompts (
@@ -113,14 +116,26 @@ const stmts = {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   getById: db.prepare(`SELECT * FROM prompts WHERE id = ?`),
-  allPrompts: db.prepare(`SELECT * FROM prompts ORDER BY created_at DESC`),
   allTexts: db.prepare(`SELECT text FROM prompts`),
   listBrowse: db.prepare(`
     SELECT ${LIST_SUMMARY_COLS} FROM prompts
     ORDER BY pinned DESC, created_at DESC
     LIMIT ? OFFSET ?
   `),
+  listBrowseFull: db.prepare(`
+    SELECT * FROM prompts ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?
+  `),
   listBrowseTotal: db.prepare(`SELECT COUNT(*) AS total FROM prompts`),
+  textsForPhrases: db.prepare(`
+    SELECT text FROM prompts ORDER BY score DESC, created_at DESC LIMIT ?
+  `),
+  distinctDays: db.prepare(`
+    SELECT DISTINCT
+      cast(strftime('%Y', created_at / 1000, 'unixepoch', 'localtime') as integer) AS y,
+      cast(strftime('%m', created_at / 1000, 'unixepoch', 'localtime') as integer) AS m,
+      cast(strftime('%d', created_at / 1000, 'unixepoch', 'localtime') as integer) AS d
+    FROM prompts
+  `),
   ftsSearch: db.prepare(`
     SELECT p.id, p.title, substr(p.text, 1, 220) AS text, p.tags, p.source, p.cwd,
            p.score, p.verdict, p.reasons, p.dimensions, p.pinned, p.created_at
@@ -128,11 +143,14 @@ const stmts = {
     JOIN prompts p ON p.id = f.rowid
     WHERE prompts_fts MATCH ?
     ORDER BY p.pinned DESC, rank
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `),
   ftsSearchFull: db.prepare(`
     SELECT p.* FROM prompts_fts f JOIN prompts p ON p.id = f.rowid
-    WHERE prompts_fts MATCH ? ORDER BY p.pinned DESC, rank LIMIT ?
+    WHERE prompts_fts MATCH ? ORDER BY p.pinned DESC, rank LIMIT ? OFFSET ?
+  `),
+  ftsCount: db.prepare(`
+    SELECT COUNT(*) AS total FROM prompts_fts WHERE prompts_fts MATCH ?
   `),
   deletePrompt: db.prepare(`DELETE FROM prompts WHERE id = ?`),
   togglePinRead: db.prepare(`SELECT pinned FROM prompts WHERE id = ?`),
@@ -153,6 +171,11 @@ const stmts = {
   insertRecent: db.prepare(`
     INSERT INTO recent_captures (text, title, source, cwd, score, verdict, reasons, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  trimRecent: db.prepare(`
+    DELETE FROM recent_captures WHERE id NOT IN (
+      SELECT id FROM recent_captures ORDER BY created_at DESC LIMIT ?
+    )
   `),
   getRecent: db.prepare(`SELECT * FROM recent_captures ORDER BY created_at DESC LIMIT ?`),
   getRecentById: db.prepare(`SELECT * FROM recent_captures WHERE id = ?`),
@@ -196,7 +219,6 @@ const stmts = {
     FROM prompts GROUP BY bucket ORDER BY bucket
   `),
   allTags: db.prepare(`SELECT tags FROM prompts WHERE tags IS NOT NULL AND tags != ''`),
-  allCreated: db.prepare(`SELECT created_at FROM prompts ORDER BY created_at DESC`),
   updateScore: db.prepare(`UPDATE prompts SET score = ?, verdict = ?, reasons = ?, dimensions = ? WHERE id = ?`),
   selectIdsTexts: db.prepare(`SELECT id, text FROM prompts`)
 };
@@ -216,10 +238,15 @@ function createPrompt({ text, title, tags, source, cwd, score, verdict, reasons,
     text, title || '', tags || '', source || '', cwd || '',
     score || 0, verdict || '', serializeReasons(reasons), serializeDimensions(dimensions), now
   );
+  invalidateStatsCache();
   return stmts.getById.get(info.lastInsertRowid);
 }
 
-function allTexts() {
+/** All prompt texts, optionally capped (phrases / templates use a score-ranked subset). */
+function allTexts({ limit } = {}) {
+  if (limit != null && Number(limit) > 0) {
+    return stmts.textsForPhrases.all(Math.min(Number(limit), 2000)).map(r => r.text);
+  }
   return stmts.allTexts.all().map(r => r.text);
 }
 
@@ -235,15 +262,39 @@ function reanalyzeAll(analyzeFn) {
     }
   });
   tx();
+  invalidateStatsCache();
+  return { changed: rows.length };
+}
+
+/**
+ * Chunked reanalyze that yields between batches so the Electron main process
+ * stays responsive on large vaults. Prefer this from UI / tray actions.
+ */
+async function reanalyzeAllAsync(analyzeFn, { batchSize = 40 } = {}) {
+  const rows = stmts.selectIdsTexts.all();
+  const size = Math.max(1, Number(batchSize) || 40);
+  for (let i = 0; i < rows.length; i += size) {
+    const batch = rows.slice(i, i + size);
+    const tx = db.transaction(() => {
+      for (const r of batch) {
+        const a = analyzeFn(r.text);
+        stmts.updateScore.run(
+          a.score || 0, a.verdict || '', serializeReasons(a.reasons),
+          serializeDimensions(a.dimensions), r.id
+        );
+      }
+    });
+    tx();
+    if (i + size < rows.length) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  }
+  invalidateStatsCache();
   return { changed: rows.length };
 }
 
 function getById(id) {
   return stmts.getById.get(id);
-}
-
-function allPrompts() {
-  return stmts.allPrompts.all();
 }
 
 function buildFtsQuery(q) {
@@ -257,16 +308,16 @@ function buildFtsQuery(q) {
  * Returns summary rows (text truncated to 220 chars) unless fullText is true.
  */
 function listPrompts({ q = '', limit = 100, offset = 0, fullText = false } = {}) {
-  const lim = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const lim = Math.max(1, Math.min(Number(limit) || 100, 1000));
   const off = Math.max(0, Number(offset) || 0);
   const query = (q || '').trim();
 
   if (!query) {
     const rows = fullText
-      ? db.prepare(`SELECT * FROM prompts ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?`).all(lim, off)
+      ? stmts.listBrowseFull.all(lim, off)
       : stmts.listBrowse.all(lim, off);
     const { total } = stmts.listBrowseTotal.get();
-    return { rows, total, limit: lim, offset: off };
+    return { rows, total, limit: lim, offset: off, hasMore: off + rows.length < total };
   }
 
   const match = buildFtsQuery(query);
@@ -274,20 +325,14 @@ function listPrompts({ q = '', limit = 100, offset = 0, fullText = false } = {})
     return listPrompts({ q: '', limit: lim, offset: off, fullText });
   }
   try {
+    const { total } = stmts.ftsCount.get(match);
     const rows = fullText
-      ? stmts.ftsSearchFull.all(match, lim)
-      : stmts.ftsSearch.all(match, lim);
-    return { rows, total: rows.length, limit: lim, offset: 0 };
+      ? stmts.ftsSearchFull.all(match, lim, off)
+      : stmts.ftsSearch.all(match, lim, off);
+    return { rows, total, limit: lim, offset: off, hasMore: off + rows.length < total };
   } catch (e) {
-    return { rows: [], total: 0, limit: lim, offset: 0 };
+    return { rows: [], total: 0, limit: lim, offset: off, hasMore: false };
   }
-}
-
-/** Backward-compatible search used by older callers. Caps empty browse at 500. */
-function search(q, limit) {
-  const lim = limit != null ? Number(limit) : ((q && q.trim()) ? 200 : 500);
-  const { rows } = listPrompts({ q, limit: lim, fullText: true });
-  return rows;
 }
 
 function updatePrompt(id, fields) {
@@ -326,15 +371,21 @@ function updatePrompt(id, fields) {
     }
     upd.run(...safeKeys.map(k => fields[k]), id);
   }
+  invalidateStatsCache();
   return getById(id);
 }
 
-function deletePrompt(id) { return stmts.deletePrompt.run(id); }
+function deletePrompt(id) {
+  const info = stmts.deletePrompt.run(id);
+  invalidateStatsCache();
+  return info;
+}
 
 function togglePin(id) {
   const row = stmts.togglePinRead.get(id);
   if (!row) return null;
   stmts.togglePinWrite.run(row.pinned ? 0 : 1, id);
+  invalidateStatsCache();
   return getById(id);
 }
 
@@ -360,6 +411,8 @@ function saveRecentCapture({ text, title, source, cwd, score, verdict, reasons }
     text, title || '', source || '', cwd || '',
     score || 0, verdict || '', serializeReasons(reasons), Date.now()
   );
+  stmts.trimRecent.run(RECENT_KEEP);
+  invalidateStatsCache();
   return stmts.getRecentById.get(info.lastInsertRowid);
 }
 
@@ -372,12 +425,15 @@ function getRecentCaptureById(id) {
 }
 
 function deleteRecentCapture(id) {
-  return stmts.deleteRecent.run(id);
+  const info = stmts.deleteRecent.run(id);
+  invalidateStatsCache();
+  return info;
 }
 
 // ---- Training labels ----
 function saveTrainingLabel(promptId, label) {
   stmts.upsertLabel.run(promptId, label, Date.now());
+  invalidateStatsCache();
 }
 
 function getTrainingLabels() {
@@ -392,10 +448,39 @@ function getTrainingLabelMap() {
 
 function deleteTrainingLabel(promptId) {
   stmts.deleteLabel.run(promptId);
+  invalidateStatsCache();
 }
 
 // ---- Vault aggregates for dashboard (no full-text rows) ----
+let _statsCache = null;
+let _statsRevision = null;
+
+function invalidateStatsCache() {
+  _statsCache = null;
+  _statsRevision = null;
+}
+
+function computeStreak() {
+  // Distinct calendar days via SQL — avoids shipping every created_at to JS
+  const days = stmts.distinctDays.all();
+  const daySet = new Set(days.map(r => `${r.y}-${r.m - 1}-${r.d}`));
+  let streak = 0;
+  const cursor = new Date();
+  const todayKey = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
+  if (!daySet.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
+  for (;;) {
+    const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
+    if (!daySet.has(key)) break;
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 function getVaultStats() {
+  const revision = getRevision();
+  if (_statsCache && _statsRevision === revision) return _statsCache;
+
   const score = stmts.scoreStats.get();
   const byVerdict = {};
   for (const r of stmts.byVerdict.all()) byVerdict[r.verdict || 'maybe'] = r.c;
@@ -418,27 +503,7 @@ function getVaultStats() {
     }
   }
 
-  // Activity streak: consecutive days with ≥1 prompt ending today or yesterday
-  const created = stmts.allCreated.all().map(r => r.created_at);
-  const daySet = new Set(created.map(ts => {
-    const d = new Date(ts);
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  }));
-  let streak = 0;
-  const cursor = new Date();
-  // Allow streak to start from yesterday if nothing today yet
-  const todayKey = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
-  if (!daySet.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
-  for (;;) {
-    const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
-    if (!daySet.has(key)) break;
-    streak++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  const revision = `${stmts.count.get().c}:${stmts.maxCreated.get().m}:${stmts.countRecent.get().c}:${stmts.maxRecentCreated.get().m}:${stmts.countLabels.get().c}`;
-
-  return {
+  const result = {
     total: score.total,
     pinned: stmts.countPinned.get().c,
     avgScore: Math.round(score.avg_score * 10) / 10,
@@ -449,10 +514,13 @@ function getVaultStats() {
     bySource,
     histogram: hist,
     tags: tagFreq,
-    streak,
+    streak: computeStreak(),
     recentCount: stmts.countRecent.get().c,
     revision
   };
+  _statsCache = result;
+  _statsRevision = revision;
+  return result;
 }
 
 function getTopPromptsForTemplate({ minScore = 65, limit = 15 } = {}) {
@@ -485,29 +553,14 @@ function getTrainModel() {
   try { return JSON.parse(v); } catch (e) { return null; }
 }
 
-let lastAnalysis = null;
-function setLastAnalysis(data) { lastAnalysis = data; }
-function getLastAnalysis() { return lastAnalysis; }
-
-function ensureSchema() {
-  const row = db.prepare(`SELECT COUNT(*) as c FROM pragma_table_info('prompts') WHERE name='pinned'`).get();
-  if (row.c === 0) {
-    try { db.exec(`ALTER TABLE prompts ADD COLUMN pinned INTEGER DEFAULT 0`); } catch (e) {}
-  }
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_prompts_created_at ON prompts(created_at DESC)`); } catch (e) {}
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_prompts_pinned_created ON prompts(pinned DESC, created_at DESC)`); } catch (e) {}
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_prompts_source ON prompts(source)`); } catch (e) {}
-}
-
 module.exports = {
   DB_PATH,
-  createPrompt, getById, allPrompts, allTexts, search, listPrompts, reanalyzeAll,
+  createPrompt, getById, allTexts, listPrompts, reanalyzeAll, reanalyzeAllAsync,
   updatePrompt, deletePrompt, togglePin, count,
   getVersions, restoreVersion, deleteVersion,
   saveRecentCapture, getRecentCaptures, getRecentCaptureById, deleteRecentCapture,
   saveTrainingLabel, getTrainingLabels, getTrainingLabelMap, deleteTrainingLabel,
-  getVaultStats, getTopPromptsForTemplate, getRevision,
+  getVaultStats, getTopPromptsForTemplate, getRevision, invalidateStatsCache,
   kvSet, kvGet, kvDelete,
-  saveTrainModel, getTrainModel,
-  setLastAnalysis, getLastAnalysis, ensureSchema
+  saveTrainModel, getTrainModel
 };

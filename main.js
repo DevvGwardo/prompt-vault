@@ -11,11 +11,15 @@ const codexWatcher = require('./lib/codex-watcher');
 const grokWatcher = require('./lib/grok-watcher');
 const hermesWatcher = require('./lib/hermes-watcher');
 const claudeCodeWatcher = require('./lib/claude-code-watcher');
+const cursorWatcher = require('./lib/cursor-watcher');
 const masAccess = require('./lib/mas-access');
 
-const HTTP_PORT = 8765;
+const HTTP_PORT = Number(process.env.PROMPT_VAULT_HTTP_PORT) || 8765;
 const HOTKEY = 'CommandOrControl+Shift+P';
 const SAVE_PENDING_HOTKEY = 'CommandOrControl+Shift+S';
+// Open-vault hotkey default avoids the ubiquitous Cmd+Shift+V "paste and match
+// style" system shortcut on macOS; overridable via PROMPT_VAULT_OPEN_HOTKEY.
+const OPEN_VAULT_HOTKEY = process.env.PROMPT_VAULT_OPEN_HOTKEY || 'CommandOrControl+Shift+O';
 
 // Pill size — kept small + non-intrusive (clicky-style)
 const PILL_W = 220;
@@ -58,8 +62,15 @@ function notifyVaultChanged(reason, meta = {}) {
 // Forward renderer console + errors to the main-process log so they appear in the terminal.
 function wireDiagnostics(win, label) {
   const levels = ['debug', 'info', 'warning', 'error'];
-  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    console.log(`[${label}:${levels[level] || level}] ${message}  (${sourceId}:${line})`);
+  win.webContents.on('console-message', (e, level, message, line, sourceId) => {
+    // Electron >=36 passes message details on the event object (level as a
+    // string); older versions pass positional args (level as 0-3). Handle both.
+    let lvl = level, msg = message, ln = line, src = sourceId;
+    if (e && typeof e === 'object' && typeof e.message === 'string') {
+      lvl = e.level; msg = e.message; ln = e.lineNumber; src = e.sourceId;
+    }
+    const name = typeof lvl === 'number' ? (levels[lvl] || lvl) : (lvl || 'log');
+    console.log(`[${label}:${name}] ${msg}  (${src}:${ln})`);
   });
   win.webContents.on('render-process-gone', (_e, details) => {
     console.error(`[${label}] render-process-gone:`, details);
@@ -373,6 +384,25 @@ function startHttpServer() {
     if (req.method !== 'POST' || req.url !== '/prompt') {
       res.writeHead(404); return res.end();
     }
+    // Localhost CSRF guard: curl/CLI/hooks send no Origin/Referer, but a browser
+    // page the user visits can POST to 127.0.0.1 with fetch() — reject those.
+    const origin = req.headers.origin || req.headers.referer;
+    if (origin) {
+      let ok = false;
+      try {
+        const u = new URL(origin);
+        ok = u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost');
+      } catch {}
+      if (!ok) {
+        res.writeHead(403); res.end('forbidden'); return;
+      }
+    }
+    // Require a JSON body — a no-cors browser fetch can't set Content-Type to
+    // application/json (it would need a preflight we never answer).
+    const ct = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (ct !== 'application/json') {
+      res.writeHead(415); res.end('unsupported media type'); return;
+    }
     let body = '';
     req.on('data', c => { body += c; if (body.length > 200_000) req.destroy(); });
     req.on('end', () => {
@@ -403,11 +433,7 @@ function setClipboardMonitor(enabled) {
   if (clipboardWatcher) { clearInterval(clipboardWatcher); clipboardWatcher = null; }
   if (!enabled) return;
   lastClipboard = clipboard.readText();
-  const intervalMs = () => {
-    // Slow down when no vault window is focused — cuts idle IPC churn
-    if (!searchWindow || searchWindow.isDestroyed() || !searchWindow.isFocused()) return 4000;
-    return 2000;
-  };
+
   const tick = () => {
     const cur = clipboard.readText();
     if (cur && cur !== lastClipboard && cur.length > 40) {
@@ -416,12 +442,27 @@ function setClipboardMonitor(enabled) {
     } else {
       lastClipboard = cur;
     }
-    if (clipboardWatcher) {
-      clearInterval(clipboardWatcher);
-      clipboardWatcher = setInterval(tick, intervalMs());
-    }
   };
-  clipboardWatcher = setInterval(tick, intervalMs());
+
+  // Fixed interval with adaptive reschedule — recreating every tick was wasteful.
+  // Slow when the vault window isn't focused to cut idle CPU.
+  const desiredMs = () => {
+    if (!searchWindow || searchWindow.isDestroyed() || !searchWindow.isFocused()) return 5000;
+    return 1500;
+  };
+  let currentMs = desiredMs();
+  const arm = () => {
+    if (clipboardWatcher) clearInterval(clipboardWatcher);
+    clipboardWatcher = setInterval(() => {
+      tick();
+      const next = desiredMs();
+      if (next !== currentMs) {
+        currentMs = next;
+        arm();
+      }
+    }, currentMs);
+  };
+  arm();
   refreshTrayMenu();
 }
 
@@ -431,7 +472,7 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: `Vault: ${dbApi.count()} prompts`, enabled: false },
     { type: 'separator' },
-    { label: 'Open Vault…', accelerator: 'CommandOrControl+Shift+V', click: createSearchWindow },
+    { label: 'Open Vault…', accelerator: OPEN_VAULT_HOTKEY, click: createSearchWindow },
     { label: `Save clipboard (${HOTKEY})`, click: saveClipboardManual },
     { label: `Quick-save pending (${SAVE_PENDING_HOTKEY})`, click: () => {
       if (!pending) return;
@@ -442,12 +483,18 @@ function refreshTrayMenu() {
     { label: 'Quick Pick…', accelerator: PICKER_HOTKEY, click: showPicker },
     { label: 'Watch clipboard', type: 'checkbox', checked: clipboardEnabled,
       click: i => setClipboardMonitor(i.checked) },
-    { label: 'Reanalyze all prompts', click: () => {
-      const result = dbApi.reanalyzeAll(analyzePrompt);
-      if (tray) tray.setTitle(`✓ ${result.changed} upd`);
+    { label: 'Reanalyze all prompts', click: async () => {
+      if (tray) tray.setTitle('…');
+      try {
+        const result = await dbApi.reanalyzeAllAsync(analyzePrompt);
+        if (tray) tray.setTitle(`✓ ${result.changed} upd`);
+        notifyVaultChanged('reanalyze', { changed: result.changed });
+      } catch (err) {
+        console.error('[reanalyze]', err);
+        if (tray) tray.setTitle('✗');
+      }
       setTimeout(() => tray && tray.setTitle('PV'), 1500);
       refreshTrayMenu();
-      notifyVaultChanged('reanalyze', { changed: result.changed });
     }},
     { label: 'Reveal DB in Finder', click: () => shell.showItemInFolder(dbApi.DB_PATH) },
     // MAS sandbox: watchers need a one-time home-folder grant; offer a retry
@@ -473,15 +520,7 @@ function saveClipboardManual() {
 }
 
 // ----- IPC from renderer -----
-ipcMain.handle('vault:search', (_e, q) => {
-  const { rows } = dbApi.listPrompts({ q, limit: 200, fullText: false });
-  return rows;
-});
 ipcMain.handle('vault:list', (_e, opts) => dbApi.listPrompts(opts || {}));
-ipcMain.handle('vault:all', () => {
-  const { rows } = dbApi.listPrompts({ limit: 500, fullText: false });
-  return rows;
-});
 ipcMain.handle('vault:get', (_e, id) => dbApi.getById(id));
 ipcMain.handle('vault:delete', (_e, id) => {
   dbApi.deletePrompt(id);
@@ -510,7 +549,6 @@ ipcMain.handle('vault:delete-version', (_e, versionId) => {
   if (!versionId || !Number.isInteger(versionId)) return null;
   return dbApi.deleteVersion(versionId);
 });
-ipcMain.handle('vault:count', () => dbApi.count());
 ipcMain.handle('vault:revision', () => dbApi.getRevision());
 ipcMain.handle('vault:stats', () => dbApi.getVaultStats());
 ipcMain.handle('vault:copy', (_e, text) => { clipboard.writeText(text); return true; });
@@ -536,7 +574,7 @@ ipcMain.handle('picker:search', (_e, q) => {
   const { rows } = dbApi.listPrompts({ q: q || '', limit: 30, fullText: true });
   return rows;
 });
-ipcMain.handle('picker:copy', (_e, id, _paste) => {
+ipcMain.handle('picker:copy', (_e, id) => {
   const row = dbApi.getById(id);
   if (!row) return false;
   clipboard.writeText(row.text);
@@ -583,13 +621,14 @@ ipcMain.handle('vault:train-stats', () => {
 });
 ipcMain.handle('vault:train-labels', () => dbApi.getTrainingLabelMap());
 ipcMain.handle('vault:phrases', () => {
-  const texts = dbApi.allTexts();
+  // Cap input — phrase mining is O(n * tokens); score-ranked subset is enough
+  const texts = dbApi.allTexts({ limit: 400 });
   return findRepetitivePhrases(texts);
 });
 ipcMain.handle('vault:optimal-prompt', () => {
   let prompts = dbApi.getTopPromptsForTemplate({ minScore: 65, limit: 40 });
   if (prompts.length < 1) {
-    const { rows } = dbApi.listPrompts({ limit: 100, fullText: true });
+    const { rows } = dbApi.listPrompts({ limit: 80, fullText: true });
     prompts = rows;
   }
   return generateOptimalPrompt(prompts);
@@ -621,8 +660,8 @@ ipcMain.handle('vault:delete-recent', (_e, id) => {
   notifyVaultChanged('recent', { id });
   return true;
 });
-ipcMain.handle('vault:reanalyze', () => {
-  const result = dbApi.reanalyzeAll(analyzePrompt);
+ipcMain.handle('vault:reanalyze', async () => {
+  const result = await dbApi.reanalyzeAllAsync(analyzePrompt);
   notifyVaultChanged('reanalyze', { changed: result.changed });
   return result;
 });
@@ -653,7 +692,10 @@ function rebuildModel() {
     totalBad: m.totalBad,
     version: m.version
   });
-  dbApi.reanalyzeAll(analyzePrompt);
+  // Fire-and-forget chunked reanalyze so train IPC stays snappy
+  dbApi.reanalyzeAllAsync(analyzePrompt).then(result => {
+    notifyVaultChanged('reanalyze', { changed: result.changed });
+  }).catch(err => console.error('[rebuildModel reanalyze]', err));
   return m;
 }
 
@@ -679,7 +721,8 @@ function startWatchers(homeDir) {
     codexWatcher.start(onPrompt, homeDir),
     grokWatcher.start(onPrompt, homeDir),
     hermesWatcher.start(onPrompt, homeDir),
-    claudeCodeWatcher.start(onPrompt, homeDir)
+    claudeCodeWatcher.start(onPrompt, homeDir),
+    cursorWatcher.start(onPrompt, homeDir)
   ].filter(fn => typeof fn === 'function');
 }
 
@@ -699,7 +742,7 @@ app.whenReady().then(async () => {
   // icon file or the tray is invisible.
   let trayIcon;
   if (process.platform === 'darwin') {
-    trayIcon = nativeImage.createFromNamedImage('NSStatusAvailable', [-1, 0, 1]) ||
+    trayIcon = nativeImage.createFromNamedImage('NSStatusAvailable', { hslShift: [-1, 0, 1] }) ||
                nativeImage.createEmpty();
   } else {
     trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray', 'tray-icon.png'));
@@ -711,7 +754,7 @@ app.whenReady().then(async () => {
   tray.on('click', () => createSearchWindow());
 
   globalShortcut.register(HOTKEY, saveClipboardManual);
-  globalShortcut.register('CommandOrControl+Shift+V', createSearchWindow);
+  globalShortcut.register(OPEN_VAULT_HOTKEY, createSearchWindow);
   globalShortcut.register(PICKER_HOTKEY, showPicker);
   // Quick-save whatever's currently pending — works without touching the pill.
   globalShortcut.register(SAVE_PENDING_HOTKEY, () => {

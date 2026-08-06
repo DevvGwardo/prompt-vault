@@ -38,11 +38,11 @@ function verdictColor(v) {
 }
 
 function sourceLabel(s) {
-  return ({ 'claude-code': 'Claude Code', 'grok': 'Grok', 'codex': 'Codex', 'hermes': 'Hermes', clipboard: 'Clipboard', hotkey: 'Hotkey', manual: 'Manual' }[s]) || s || 'unknown';
+  return ({ 'claude-code': 'Claude Code', 'cursor': 'Cursor', 'grok': 'Grok', 'codex': 'Codex', 'hermes': 'Hermes', clipboard: 'Clipboard', hotkey: 'Hotkey', manual: 'Manual' }[s]) || s || 'unknown';
 }
 
 function sourceShort(s) {
-  return ({ 'claude-code': 'CC', 'grok': 'GR', 'codex': 'CX', 'hermes': 'HM', clipboard: 'CB', hotkey: 'HK', manual: 'MN' }[s]) || s || '??';
+  return ({ 'claude-code': 'CC', 'cursor': 'CU', 'grok': 'GR', 'codex': 'CX', 'hermes': 'HM', clipboard: 'CB', hotkey: 'HK', manual: 'MN' }[s]) || s || '??';
 }
 
 // ---- LCS line-level diff (pure JS, no deps) ----
@@ -309,8 +309,15 @@ async function sharePrompt(row) {
     const canvas = renderShareCard(row);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) return;
-    const buffer = await blob.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    // Chunked conversion — spreading a large buffer into String.fromCharCode
+    // throws "Maximum call stack size exceeded" on big share cards.
+    let bin = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const base64 = btoa(bin);
     const result = await window.vault.shareImage(base64, row.id);
     if (result) {
       const btn = document.getElementById('a-share');
@@ -580,7 +587,7 @@ function updateVerdicts() {
 
 // ---- Module 8: SOURCES ----
 function updateSources() {
-  const sources = ['claude-code', 'grok', 'codex', 'hermes', 'clipboard', 'hotkey', 'manual'];
+  const sources = ['claude-code', 'cursor', 'grok', 'codex', 'hermes', 'clipboard', 'hotkey', 'manual'];
   const bySource = vaultStats?.bySource || {};
   const counts = sources.map(s => bySource[s] || 0);
   const max = Math.max(...counts, 1);
@@ -784,19 +791,20 @@ function renderDetail(row) {
     setTimeout(() => { btn.innerHTML = `<svg viewBox="0 0 20 20"><rect x="6" y="6" width="11" height="11" rx="2"/><path d="M4 13V5a1 1 0 0 1 1-1h8"/></svg> Copy`; }, 1200);
   });
   document.getElementById('a-share').onclick = () => sharePrompt(row);
-  document.getElementById('a-pin').onclick = async () => { await window.vault.pin(row.id); refresh(); };
+  // Mutations notify via vault:changed — skip a second full refresh here
+  document.getElementById('a-pin').onclick = async () => { await window.vault.pin(row.id); };
   document.getElementById('a-del').onclick = async () => {
     if (confirm(`Delete "${row.title || row.text.slice(0, 50)}"?`)) {
-      await window.vault.delete(row.id); current = null; refresh();
+      await window.vault.delete(row.id); current = null;
     }
   };
   document.getElementById('a-tags').onclick = async () => {
     const tags = prompt('Tags (comma separated):', row.tags || '');
-    if (tags !== null) { await window.vault.update(row.id, { tags }); refresh(); }
+    if (tags !== null) await window.vault.update(row.id, { tags });
   };
   document.getElementById('a-title').onclick = async () => {
     const title = prompt('Title:', row.title || '');
-    if (title !== null) { await window.vault.update(row.id, { title }); refresh(); }
+    if (title !== null) await window.vault.update(row.id, { title });
   };
   document.getElementById('a-train-good').onclick = async () => {
     const cur = trainedIds[row.id];
@@ -807,8 +815,6 @@ function renderDetail(row) {
       await window.vault.train(row.id, 'good');
       trainedIds[row.id] = 'good';
     }
-    // Full refresh — model rebuilt server-side, all scores reanalyzed
-    refresh();
   };
   document.getElementById('a-train-bad').onclick = async () => {
     const cur = trainedIds[row.id];
@@ -819,7 +825,6 @@ function renderDetail(row) {
       await window.vault.train(row.id, 'bad');
       trainedIds[row.id] = 'bad';
     }
-    refresh();
   };
 
   // Edit / Save toggle
@@ -833,7 +838,7 @@ function renderDetail(row) {
         if (ta) {
           const savedId = row.id;
           window.vault.update(savedId, { text: ta.value }).then(() => {
-            refresh();
+            // vault:changed handles list/detail; restore versions panel after paint
             setTimeout(() => {
               const vlist = document.getElementById('versions-list');
               const vbtn = document.getElementById('versions-toggle');
@@ -842,7 +847,7 @@ function renderDetail(row) {
                 vbtn.textContent = 'Hide';
                 renderVersions(savedId);
               }
-            }, 0);
+            }, 80);
           });
         }
       } else {
@@ -938,7 +943,6 @@ async function renderVersions(promptId) {
         try {
           const result = await window.vault.restoreVersion(vid);
           if (!result) { alert('Version not found.'); return; }
-          refresh();
         } catch (e) { console.error('[versions] restore error:', e); }
       };
 
@@ -1020,9 +1024,10 @@ function applyListItem(li, r, i, cutoff) {
   }
 }
 
-function renderList() {
+function renderList({ append = false } = {}) {
   if (!rows.length) {
     _listIds = '';
+    _listHasMore = false;
     list.innerHTML = `<li style="cursor:default;padding:20px 12px;color:var(--muted);font-size:13px">
       ${q.value
         ? 'Nothing matches that query. Try a tag or a file path.'
@@ -1032,22 +1037,64 @@ function renderList() {
   }
   const cutoff = Date.now() - 60000;
   const ids = rows.map(r => r.id).join(',');
-  if (ids === _listIds) {
+
+  if (!append && ids === _listIds) {
     const liMap = new Map([...list.querySelectorAll('li[data-id]')].map(li => [Number(li.dataset.id), li]));
     rows.forEach((r, i) => {
       const li = liMap.get(r.id);
       if (li) applyListItem(li, r, i, cutoff);
     });
+    syncLoadMoreSentinel();
     return;
   }
+
+  if (append) {
+    const start = list.querySelectorAll('li[data-id]').length;
+    const fresh = rows.slice(start);
+    list.insertAdjacentHTML('beforeend', fresh.map((r, i) => buildListItemHtml(r, start + i, cutoff)).join(''));
+    _listIds = ids;
+    syncLoadMoreSentinel();
+    return;
+  }
+
   const scrollTop = list.scrollTop;
   _listIds = ids;
   list.innerHTML = rows.map((r, i) => buildListItemHtml(r, i, cutoff)).join('');
   list.scrollTop = scrollTop;
+  syncLoadMoreSentinel();
+}
+
+function syncLoadMoreSentinel() {
+  let sentinel = list.querySelector('.list-load-more');
+  if (!_listHasMore) {
+    if (sentinel) sentinel.remove();
+    return;
+  }
+  if (!sentinel) {
+    list.insertAdjacentHTML('beforeend',
+      `<li class="list-load-more" style="cursor:default;padding:10px;text-align:center;color:var(--muted);font-size:11px">Scroll for more…</li>`);
+  }
 }
 
 // ---- Main refresh ----
+const PAGE_SIZE = 80;
 let _refreshVersion = 0;
+let _listTotal = 0;
+let _listHasMore = false;
+let _loadingMore = false;
+
+/** What each vault:changed reason needs. Full refresh = all true. */
+const REASON_SCOPE = {
+  recent:    { list: false, stats: false, labels: false, recent: true, phrases: false, training: false },
+  pin:       { list: true,  stats: true, labels: false, recent: false, phrases: false, training: false },
+  train:     { list: true,  stats: true, labels: true,  recent: false, phrases: true,  training: true },
+  create:    { list: true,  stats: true, labels: false, recent: false, phrases: true,  training: false },
+  delete:    { list: true,  stats: true, labels: true,  recent: false, phrases: true,  training: false },
+  update:    { list: true,  stats: true, labels: false, recent: false, phrases: true,  training: false },
+  reanalyze: { list: true,  stats: true, labels: false, recent: false, phrases: true,  training: false },
+  scores:    { list: true,  stats: true, labels: false, recent: false, phrases: true,  training: false }
+};
+const FULL_SCOPE = { list: true, stats: true, labels: true, recent: true, phrases: true, training: true };
 
 function detailKey(row) {
   if (!row) return '';
@@ -1064,76 +1111,142 @@ function isTextTruncated(text) {
   return text.replace(/\n+/g, ' ').length >= 220;
 }
 
-async function refresh(opts = {}) {
-  const { force = false } = opts;
-  const query = q.value;
-  const version = ++_refreshVersion;
-  list.classList.add('loading');
-  try {
-    const [listRes, stats, labelMap, caps] = await Promise.all([
-      window.vault.list({ q: query, limit: 200 }),
-      window.vault.stats(),
-      window.vault.trainLabels(),
-      window.vault.recentCaptures(50)
-    ]);
-    if (version !== _refreshVersion) return;
+function applyDashboardFromStats() {
+  updateVault();
+  updateStats();
+  updateVerdicts();
+  updateSources();
+  updateTags();
+  updateHistogram();
+  updateActivity();
+}
 
-    if (!force && stats.revision === _lastRenderedRevision && query === _lastQuery) {
-      _lastRevision = stats.revision;
-      return;
-    }
-
-    trainedIds = labelMap || {};
-    rows = listRes.rows || [];
-    allRows = query ? allRows : rows;
-    vaultStats = stats;
-    window._vaultStats = stats;
-    recentCaps = caps || [];
-    _lastRevision = stats.revision;
-
-    updateVault();
-    await updateTrainingStatus(version);
-    if (version !== _refreshVersion) return;
-    updateStats();
-    updateVerdicts();
-    updateSources();
-    updateTags();
-    updateHistogram();
-    updateActivity();
-    await updatePhrases(version);
-    if (version !== _refreshVersion) return;
-    renderList();
-
-    if (current) {
-      if (!isUserEditing()) {
-        let row = rows.find(r => r.id === current);
-        if (row) {
-          if (isTextTruncated(row.text)) {
-            try {
-              const full = await window.vault.get(current);
-              if (version !== _refreshVersion) return;
-              if (full) row = full;
-            } catch {}
-          }
-          const key = detailKey(row);
-          if (key !== _lastDetailKey) {
-            renderDetail(row);
-            _lastDetailKey = key;
-          }
-        } else {
-          renderDetail(null);
-          _lastDetailKey = '';
+async function syncDetailPane(version) {
+  if (current) {
+    if (!isUserEditing()) {
+      let row = rows.find(r => r.id === current);
+      if (row) {
+        if (isTextTruncated(row.text)) {
+          try {
+            const full = await window.vault.get(current);
+            if (version !== _refreshVersion) return;
+            if (full) row = full;
+          } catch {}
         }
+        const key = detailKey(row);
+        if (key !== _lastDetailKey) {
+          renderDetail(row);
+          _lastDetailKey = key;
+        }
+      } else {
+        renderDetail(null);
+        _lastDetailKey = '';
       }
-    } else {
-      renderDetail(null);
-      _lastDetailKey = '';
+    }
+  } else {
+    renderDetail(null);
+    _lastDetailKey = '';
+  }
+}
+
+async function refresh(opts = {}) {
+  const { force = false, reason = null, append = false } = opts;
+  const query = q.value;
+  let scope = reason ? (REASON_SCOPE[reason] || FULL_SCOPE) : FULL_SCOPE;
+  if (append) {
+    scope = { list: true, stats: false, labels: false, recent: false, phrases: false, training: false };
+  }
+  // Query changes / first load always need list
+  const needList = scope.list || append || query !== _lastQuery;
+  const version = ++_refreshVersion;
+
+  if (needList && !append) list.classList.add('loading');
+  try {
+    const fetches = [];
+    const keys = [];
+
+    if (needList) {
+      keys.push('list');
+      const keep = append ? PAGE_SIZE : Math.max(PAGE_SIZE, rows.length || 0);
+      fetches.push(window.vault.list({
+        q: query,
+        limit: keep,
+        offset: append ? rows.length : 0
+      }));
+    }
+    if (scope.stats) {
+      keys.push('stats');
+      fetches.push(window.vault.stats());
+    }
+    if (scope.labels) {
+      keys.push('labels');
+      fetches.push(window.vault.trainLabels());
+    }
+    if (scope.recent) {
+      keys.push('recent');
+      fetches.push(window.vault.recentCaptures(50));
     }
 
-    _lastRenderedRevision = stats.revision;
-    _lastQuery = query;
+    const results = await Promise.all(fetches);
+    if (version !== _refreshVersion) return;
 
-    if (_activeTab === 'recent') renderRecentCaptures();
+    const got = {};
+    keys.forEach((k, i) => { got[k] = results[i]; });
+
+    if (got.stats) {
+      if (!force && !append && !reason && got.stats.revision === _lastRenderedRevision && query === _lastQuery) {
+        _lastRevision = got.stats.revision;
+        return;
+      }
+      vaultStats = got.stats;
+      window._vaultStats = got.stats;
+      _lastRevision = got.stats.revision;
+    }
+
+    if (got.labels) trainedIds = got.labels || {};
+    if (got.recent) recentCaps = got.recent || [];
+
+    if (got.list) {
+      const listRes = got.list;
+      const page = listRes.rows || [];
+      if (append) {
+        const seen = new Set(rows.map(r => r.id));
+        for (const r of page) {
+          if (!seen.has(r.id)) rows.push(r);
+        }
+      } else {
+        rows = page;
+      }
+      _listTotal = listRes.total || rows.length;
+      _listHasMore = !!listRes.hasMore;
+      if (!query) allRows = rows;
+    }
+
+    if (scope.stats || got.stats) applyDashboardFromStats();
+    else if (got.recent) updateActivity();
+
+    if (scope.training || (!reason && scope.stats)) {
+      await updateTrainingStatus(version);
+      if (version !== _refreshVersion) return;
+    }
+
+    if (scope.phrases) {
+      await updatePhrases(version);
+      if (version !== _refreshVersion) return;
+    }
+
+    if (got.list) {
+      renderList({ append });
+      await syncDetailPane(version);
+      if (version !== _refreshVersion) return;
+    } else if (reason === 'pin' || reason === 'update') {
+      await syncDetailPane(version);
+    }
+
+    if (got.stats) _lastRenderedRevision = got.stats.revision;
+    if (needList || !reason) _lastQuery = query;
+
+    if (_activeTab === 'recent' && (scope.recent || got.recent)) renderRecentCaptures();
 
     if (_tipActive && !document.contains(_tipActive)) {
       _tipActive = null;
@@ -1143,7 +1256,14 @@ async function refresh(opts = {}) {
     console.error('[vault] refresh error:', e);
   } finally {
     if (version === _refreshVersion) list.classList.remove('loading');
+    _loadingMore = false;
   }
+}
+
+async function loadMore() {
+  if (_loadingMore || !_listHasMore) return;
+  _loadingMore = true;
+  await refresh({ append: true, force: true });
 }
 
 // ---- Recent captures tab ----
@@ -1186,15 +1306,13 @@ async function renderRecentCaptures() {
       };
     });
 
-    // Save / delete handlers
+    // Save / delete handlers — vault:changed drives the refresh
     el.querySelectorAll('.ri-save').forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
         const id = Number(btn.closest('.recent-item').dataset.id);
         btn.textContent = '...';
         await window.vault.saveRecent(id);
-        renderRecentCaptures();
-        refresh();
       };
     });
     el.querySelectorAll('.ri-del').forEach(btn => {
@@ -1202,7 +1320,6 @@ async function renderRecentCaptures() {
         e.stopPropagation();
         const id = Number(btn.closest('.recent-item').dataset.id);
         await window.vault.deleteRecent(id);
-        refresh({ force: true });
       };
     });
   } catch (e) { console.error('[recent] error:', e); }
@@ -1316,9 +1433,15 @@ if (!_unsubscribeChanged) {
   _unsubscribeChanged = window.vault.onChanged(({ reason, revision }) => {
     invalidatePhrasesForReason(reason);
     if (revision) _lastRevision = revision;
-    refresh({ force: true });
+    refresh({ force: true, reason: reason || null });
   });
 }
+
+list.addEventListener('scroll', () => {
+  if (!_listHasMore || _loadingMore) return;
+  const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
+  if (remaining < 120) loadMore();
+});
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) stopFallbackProbe();

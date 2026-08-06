@@ -47,7 +47,7 @@ npm run dist:win  # Windows build (run on Windows)
 
 ## Set Up Capture
 
-Codex, Grok, Hermes, and Claude desktop-app prompts are captured automatically while the app is running — it watches their session directories (`~/.codex/sessions`, `~/.grok/sessions`, `~/.hermes-chat/sessions`, `~/.claude/projects`). If a tool isn't installed, its watcher simply stays off.
+Codex, Grok, Hermes, Cursor IDE, and Claude desktop-app prompts are captured automatically while the app is running — it watches their session directories (`~/.codex/sessions`, `~/.grok/sessions`, `~/.hermes-chat/sessions`, `~/.cursor/projects/*/agent-transcripts`, `~/.claude/projects`). If a tool isn't installed, its watcher simply stays off.
 
 For the Claude Code CLI and cursor-agent, run the interactive installer from a checkout:
 
@@ -65,7 +65,7 @@ You can also capture from any tool manually with `hook/pv-capture --source mytoo
 | `Cmd/Ctrl+Shift+P` | Save current clipboard as a prompt |
 | `Cmd/Ctrl+Shift+S` | Quick-save the pending captured prompt |
 | `Cmd/Ctrl+Shift+K` | Quick Pick — search and copy a saved prompt |
-| `Cmd/Ctrl+Shift+V` | Open the vault window |
+| `Cmd/Ctrl+Shift+O` | Open the vault window (override with `PROMPT_VAULT_OPEN_HOTKEY`) |
 
 ## How It Works
 

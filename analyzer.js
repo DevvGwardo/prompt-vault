@@ -223,8 +223,8 @@ function lengthScore(len) {
   if (len === 0) return -15;
   const x = Math.log2(Math.max(1, len));
   // x is ~0 for len=1, ~5 for len=32, ~6.6 for len=100, ~8.3 for len=300, ~10 for len=1024
-  // Target: peak around len=200-600, penalize below 60, neutral above 1200
-  const raw = (x - 5.5) * 4; // center at ~45 chars
+  // Positive above ~45 chars, ramps to the +15 cap by ~1k chars; empty gets -15.
+  const raw = (x - 5.5) * 4; // zero crossing at ~45 chars
   return Math.round(Math.max(-15, Math.min(15, raw)));
 }
 
@@ -510,7 +510,11 @@ function extractPhrases(text) {
 
 function findRepetitivePhrases(texts, minPrompts = 2, topN = 12) {
   const phraseCounts = {};
-  for (const { text } of texts) {
+  for (const item of texts || []) {
+    // Accept both { text } objects and plain strings — db.allTexts() returns
+    // strings while generateOptimalPrompt passes objects.
+    const text = typeof item === 'string' ? item : (item && item.text);
+    if (!text) continue;
     const phrases = extractPhrases(text);
     for (const phrase of phrases) {
       phraseCounts[phrase] = (phraseCounts[phrase] || 0) + 1;

@@ -2,12 +2,13 @@
   "name": "prompt-vault",
   "productName": "Prompt Vault",
   "version": "0.1.4",
-  "description": "Capture, score, and search prompts from Claude Code, Codex, Grok, and Cursor-agent.",
+  "description": "Capture, score, and search prompts from Claude Code, Cursor, Codex, Grok, and cursor-agent.",
   "main": "main.js",
   "author": "Prompt Vault",
   "license": "MIT",
   "scripts": {
-    "start": "electron .",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "test": "node --test",
     "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "dist": "electron-builder --mac --arm64",
@@ -17,12 +18,12 @@
     "dist:mas": "electron-builder --mac mas --arm64"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
     "@electron/rebuild": "^3.7.0",
-    "electron": "^33.0.0",
+    "electron": "^43.3.0",
     "electron-builder": "^25.0.0"
   },
   "build": {

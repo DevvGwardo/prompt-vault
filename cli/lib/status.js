@@ -1,9 +1,11 @@
 const http = require('http');
 
+const VAULT_PORT = parseInt(process.env.PV_PORT || process.env.PROMPT_VAULT_HTTP_PORT || '8765', 10);
+
 async function get(path) {
   return new Promise((resolve, reject) => {
     const req = http.request({
-      host: '127.0.0.1', port: 8765, path, method: 'GET', timeout: 1000
+      host: '127.0.0.1', port: VAULT_PORT, path, method: 'GET', timeout: 1000
     }, res => {
       let buf = '';
       res.on('data', c => buf += c);

@@ -137,6 +137,7 @@ async function installHooks() {
     { name: 'Codex CLI',   detected: !!which('codex'), wire: () => console.log('  · Codex is captured automatically by the running Prompt Vault app (watches ~/.codex/sessions).') },
     { name: 'Grok CLI',    detected: !!which('grok'),  wire: () => console.log('  · Grok is captured automatically by the running Prompt Vault app (watches ~/.grok/sessions).') },
     { name: 'Hermes Agent', detected: fs.existsSync(path.join(os.homedir(), '.hermes-chat', 'sessions')), wire: () => console.log('  · Hermes is captured automatically by the running Prompt Vault app (watches ~/.hermes-chat/sessions).') },
+    { name: 'Cursor IDE', detected: fs.existsSync(path.join(os.homedir(), '.cursor', 'projects')), wire: () => console.log('  · Cursor IDE is captured automatically by the running Prompt Vault app (watches ~/.cursor/projects/*/agent-transcripts).') },
     { name: 'cursor-agent',detected: !!which('cursor-agent'), wire: () => wireBinaryWrapper('cursor-agent') }
   ];
   for (const t of tools) {

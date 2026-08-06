@@ -1,9 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('vault', {
-  search: q => ipcRenderer.invoke('vault:search', q),
   list: opts => ipcRenderer.invoke('vault:list', opts),
-  all: () => ipcRenderer.invoke('vault:all'),
   get: id => ipcRenderer.invoke('vault:get', id),
   delete: id => ipcRenderer.invoke('vault:delete', id),
   pin: id => ipcRenderer.invoke('vault:pin', id),
@@ -11,7 +9,6 @@ contextBridge.exposeInMainWorld('vault', {
   versions: id => ipcRenderer.invoke('vault:versions', id),
   restoreVersion: vid => ipcRenderer.invoke('vault:restore-version', vid),
   deleteVersion: vid => ipcRenderer.invoke('vault:delete-version', vid),
-  count: () => ipcRenderer.invoke('vault:count'),
   revision: () => ipcRenderer.invoke('vault:revision'),
   stats: () => ipcRenderer.invoke('vault:stats'),
   copy: text => ipcRenderer.invoke('vault:copy', text),
