@@ -21,7 +21,21 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: npm ci
+        run: npm ci --no-audit --no-fund --foreground-scripts
+
+      - name: Dump failure detail to annotation
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
+          LOG=$(ls -t "$HOME/.npm/_logs"/*.log 2>/dev/null | head -1)
+          if [ -n "$LOG" ]; then
+            MSG=$(tail -80 "$LOG" | tr '\n' ' ' | cut -c1-2600)
+            echo "::error::NPM CI FAILED — $MSG"
+          else
+            echo "::error::NPM CI FAILED — no npm debug log found"
+          fi
 
       - name: Build, sign, notarize, and publish (macOS)
         env:
@@ -45,7 +59,21 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: npm ci
+        run: npm ci --no-audit --no-fund --foreground-scripts
+
+      - name: Dump failure detail to annotation
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
+          LOG=$(ls -t "$HOME/.npm/_logs"/*.log 2>/dev/null | head -1)
+          if [ -n "$LOG" ]; then
+            MSG=$(tail -80 "$LOG" | tr '\n' ' ' | cut -c1-2600)
+            echo "::error::NPM CI FAILED — $MSG"
+          else
+            echo "::error::NPM CI FAILED — no npm debug log found"
+          fi
 
       - name: Build and publish (Windows)
         env:
