@@ -1,0 +1,17 @@
+diff --git a/node_modules/@electron/rebuild/package.json b/node_modules/@electron/rebuild/package.json
+index c37a70d..90f0062 100644
+--- a/node_modules/@electron/rebuild/package.json
++++ b/node_modules/@electron/rebuild/package.json
+@@ -3,7 +3,11 @@
+   "version": "4.2.0",
+   "description": "Electron supporting package to rebuild native node modules against the currently installed electron",
+   "type": "module",
+-  "exports": "./lib/main.js",
++  "exports": {
++    ".": "./lib/main.js",
++    "./lib/search-module": "./lib/search-module.js",
++    "./lib/main": "./lib/main.js"
++  },
+   "typings": "lib/main.d.ts",
+   "scripts": {
+     "build": "tsc",

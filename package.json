@@ -9,7 +9,7 @@
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "test": "node --test",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "patch-package && electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "dist": "electron-builder --mac --arm64",
     "dist:dir": "electron-builder --mac --arm64 --dir",
@@ -22,9 +22,10 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
-    "@electron/rebuild": "^3.7.0",
+    "@electron/rebuild": "^4.2.0",
     "electron": "^43.3.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "patch-package": "^8.0.0"
   },
   "build": {
     "appId": "com.promptvault.app",
@@ -113,7 +114,7 @@
   },
   "overrides": {
     "app-builder-lib": {
-      "@electron/rebuild": "3.7.2"
+      "@electron/rebuild": "4.2.0"
     }
   }
 }
