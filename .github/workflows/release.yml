@@ -16,7 +16,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # electron 43 requires node >= 22.12 (EBADENGINE under engine-strict on
+          # hosted runners with node 20); 24 also matches GitHub's forced action runtime.
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -38,7 +40,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # electron 43 requires node >= 22.12 (EBADENGINE under engine-strict on
+          # hosted runners with node 20); 24 also matches GitHub's forced action runtime.
+          node-version: 24
           cache: npm
 
       - run: npm ci
