@@ -29,12 +29,17 @@ jobs:
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
-          LOG=$(ls -t "$HOME/.npm/_logs"/*.log 2>/dev/null | head -1)
+          CACHE=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+          LOG=$(ls -t "$CACHE/_logs"/*.log 2>/dev/null | head -1)
           if [ -n "$LOG" ]; then
-            MSG=$(tail -80 "$LOG" | tr '\n' ' ' | cut -c1-2600)
-            echo "::error::NPM CI FAILED — $MSG"
+            ERRS=$(grep -m 40 -E "npm error|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed" "$LOG" | tr '\n' ' ' | cut -c1-6000)
+            if [ -n "$ERRS" ]; then
+              echo "::error::NPM ERROR: $ERRS"
+            else
+              echo "::error::NPM LOG TAIL: $(tail -40 "$LOG" | tr '\n' ' ' | cut -c1-6000)"
+            fi
           else
-            echo "::error::NPM CI FAILED — no npm debug log found"
+            echo "::error::no npm debug log at $CACHE/_logs"
           fi
 
       - name: Build, sign, notarize, and publish (macOS)
@@ -67,12 +72,17 @@ jobs:
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
-          LOG=$(ls -t "$HOME/.npm/_logs"/*.log 2>/dev/null | head -1)
+          CACHE=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+          LOG=$(ls -t "$CACHE/_logs"/*.log 2>/dev/null | head -1)
           if [ -n "$LOG" ]; then
-            MSG=$(tail -80 "$LOG" | tr '\n' ' ' | cut -c1-2600)
-            echo "::error::NPM CI FAILED — $MSG"
+            ERRS=$(grep -m 40 -E "npm error|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed" "$LOG" | tr '\n' ' ' | cut -c1-6000)
+            if [ -n "$ERRS" ]; then
+              echo "::error::NPM ERROR: $ERRS"
+            else
+              echo "::error::NPM LOG TAIL: $(tail -40 "$LOG" | tr '\n' ' ' | cut -c1-6000)"
+            fi
           else
-            echo "::error::NPM CI FAILED — no npm debug log found"
+            echo "::error::no npm debug log at $CACHE/_logs"
           fi
 
       - name: Build and publish (Windows)
