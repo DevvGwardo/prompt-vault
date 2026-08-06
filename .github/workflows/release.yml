@@ -27,8 +27,9 @@ jobs:
           # `if !` keeps the failure inside the condition so set -e cannot kill
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
-            MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
-            echo "::error::npm ci failed - $MSG"
+            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
+            TAIL=$(tail -25 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-4000)
+            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAIL: $TAIL"
             exit 1
           fi
 
@@ -61,8 +62,9 @@ jobs:
           # `if !` keeps the failure inside the condition so set -e cannot kill
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
-            MSG=$(tail -120 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6500)
-            echo "::error::npm ci failed - $MSG"
+            ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
+            TAIL=$(tail -25 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-4000)
+            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAIL: $TAIL"
             exit 1
           fi
 
