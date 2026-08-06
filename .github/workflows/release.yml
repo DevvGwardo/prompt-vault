@@ -28,10 +28,18 @@ jobs:
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
             ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
-            TAIL=$(tail -25 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-4000)
-            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAIL: $TAIL"
+            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000)
+            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
             exit 1
           fi
+
+      - name: Upload npm ci log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-ci-log
+          path: /tmp/npm-ci.log
+          if-no-files-found: ignore
 
 
       - name: Build, sign, notarize, and publish (macOS)
@@ -63,10 +71,18 @@ jobs:
           # the step before the annotation is emitted.
           if ! npm ci --no-audit --no-fund --foreground-scripts > /tmp/npm-ci.log 2>&1; then
             ERRS=$(grep -m 12 -E "gyp ERR|error C[0-9]+|MSBUILD|fatal error|npm error|ELIFECYCLE|Command failed|exit code [1-9]|The build failed|LNK[0-9]+|cannot find|not recognized" /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-6000)
-            TAIL=$(tail -25 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-4000)
-            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAIL: $TAIL"
+            TAIL=$(tail -c 8000 /tmp/npm-ci.log | tr '\n' ' ' | cut -c1-8000)
+            echo "::error::npm ci failed - ERRS: ${ERRS:-none} | TAILBYTES: $TAIL"
             exit 1
           fi
+
+      - name: Upload npm ci log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-ci-log
+          path: /tmp/npm-ci.log
+          if-no-files-found: ignore
 
 
       - name: Build and publish (Windows)
