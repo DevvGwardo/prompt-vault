@@ -60,7 +60,7 @@ jobs:
           fi
 
   release-win:
-    runs-on: windows-2022  # VS 2022; node-gyp 10.2 cannot parse VS 18 on windows-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
