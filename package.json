@@ -110,5 +110,8 @@
       "repo": "prompt-vault",
       "releaseType": "release"
     }
+  },
+  "overrides": {
+    "node-gyp": "^13.0.1"
   }
 }
