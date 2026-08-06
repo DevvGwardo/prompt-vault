@@ -29,11 +29,11 @@ jobs:
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
-          CACHE=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+          if [ "$RUNNER_OS" = "Windows" ]; then CACHE="$LOCALAPPDATA/npm-cache"; else CACHE="$HOME/.npm"; fi
           LOG=$(ls -t "$CACHE/_logs"/*.log 2>/dev/null | head -1 || true)
           if [ -n "$LOG" ]; then
-            ERRS=$(grep -m 40 -E "npm error|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed|lifecycle" "$LOG" | tr '\n' ' ' | cut -c1-5000 || true)
-            TAIL=$(tail -25 "$LOG" | tr '\n' ' ' | cut -c1-2500 || true)
+            ERRS=$(grep -m 40 -E "npm error|ERR!|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed|lifecycle|prebuild|headers" "$LOG" | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -60 "$LOG" | tr '\n' ' ' | cut -c1-4000 || true)
             echo "::error::NPM ERR: ${ERRS:-none} | LOGTAIL: $TAIL"
           else
             echo "::error::no npm debug log at $CACHE/_logs"
@@ -69,11 +69,11 @@ jobs:
         shell: bash
         run: |
           echo "::error::node=$(node --version) npm=$(npm --version) os=$RUNNER_OS"
-          CACHE=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+          if [ "$RUNNER_OS" = "Windows" ]; then CACHE="$LOCALAPPDATA/npm-cache"; else CACHE="$HOME/.npm"; fi
           LOG=$(ls -t "$CACHE/_logs"/*.log 2>/dev/null | head -1 || true)
           if [ -n "$LOG" ]; then
-            ERRS=$(grep -m 40 -E "npm error|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed|lifecycle" "$LOG" | tr '\n' ' ' | cut -c1-5000 || true)
-            TAIL=$(tail -25 "$LOG" | tr '\n' ' ' | cut -c1-2500 || true)
+            ERRS=$(grep -m 40 -E "npm error|ERR!|EBAD|ERESOLVE|ENOENT|EACCES|EPERM|fatal|gyp |Command failed|lifecycle|prebuild|headers" "$LOG" | tr '\n' ' ' | cut -c1-6000 || true)
+            TAIL=$(tail -60 "$LOG" | tr '\n' ' ' | cut -c1-4000 || true)
             echo "::error::NPM ERR: ${ERRS:-none} | LOGTAIL: $TAIL"
           else
             echo "::error::no npm debug log at $CACHE/_logs"
