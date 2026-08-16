@@ -8,6 +8,5 @@
   },
   "files": ["bin", "lib", "README.md"],
   "engines": { "node": ">=18" },
-  "keywords": ["prompt", "vault", "claude", "codex", "grok", "cursor", "llm", "capture"],
-  "repository": { "type": "git", "url": "https://github.com/DevvGwardo/prompt-vault" }
+  "keywords": ["prompt", "vault", "claude", "codex", "grok", "cursor", "llm", "capture"]
 }
