@@ -469,8 +469,9 @@ function setClipboardMonitor(enabled) {
 // ----- Tray + menu -----
 function refreshTrayMenu() {
   if (!tray) return;
+  const promptCount = dbApi.count();
   const menu = Menu.buildFromTemplate([
-    { label: `Vault: ${dbApi.count()} prompts`, enabled: false },
+    { label: `Vault: ${promptCount} prompts`, enabled: false },
     { type: 'separator' },
     { label: 'Open Vault…', accelerator: OPEN_VAULT_HOTKEY, click: createSearchWindow },
     { label: `Save clipboard (${HOTKEY})`, click: saveClipboardManual },
@@ -510,7 +511,7 @@ function refreshTrayMenu() {
     { label: 'Quit Prompt Vault', click: () => { app.isQuitting = true; app.quit(); } }
   ]);
   tray.setContextMenu(menu);
-  tray.setToolTip(`Prompt Vault — ${dbApi.count()} saved`);
+  tray.setToolTip(`Prompt Vault — ${promptCount} saved`);
 }
 
 function saveClipboardManual() {
@@ -638,7 +639,7 @@ ipcMain.handle('vault:share-image', async (_e, base64, promptId) => {
   const filename = `prompt-vault-${promptId || 'share'}-${Date.now()}.png`;
   const filepath = path.join(tmpDir, filename);
   const buf = Buffer.from(base64, 'base64');
-  fs.writeFileSync(filepath, buf);
+  await fs.promises.writeFile(filepath, buf);
   shell.showItemInFolder(filepath);
   return filepath;
 });
@@ -770,6 +771,10 @@ app.whenReady().then(async () => {
   if (watchHome) startWatchers(watchHome);
   refreshTrayMenu();
   startTrainingLoop();
+
+  // Purge stale recent captures on startup, then every hour
+  dbApi.cleanupRecentCaptures();
+  setInterval(() => dbApi.cleanupRecentCaptures(), 60 * 60 * 1000);
 
   if (DEV) createSearchWindow();
 });
