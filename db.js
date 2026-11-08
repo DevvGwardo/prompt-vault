@@ -430,6 +430,16 @@ function deleteRecentCapture(id) {
   return info;
 }
 
+function cleanupRecentCaptures(maxAgeMs = 7 * 24 * 60 * 60 * 1000, maxRows = 2000) {
+  const cutoff = Date.now() - maxAgeMs;
+  db.prepare(`DELETE FROM recent_captures WHERE created_at < ?`).run(cutoff);
+  // Hard cap: keep only the most recent maxRows
+  const count = db.prepare(`SELECT COUNT(*) as c FROM recent_captures`).get().c;
+  if (count > maxRows) {
+    db.prepare(`DELETE FROM recent_captures WHERE id IN (SELECT id FROM recent_captures ORDER BY created_at ASC LIMIT ?)`).run(count - maxRows);
+  }
+}
+
 // ---- Training labels ----
 function saveTrainingLabel(promptId, label) {
   stmts.upsertLabel.run(promptId, label, Date.now());
@@ -558,7 +568,7 @@ module.exports = {
   createPrompt, getById, allTexts, listPrompts, reanalyzeAll, reanalyzeAllAsync,
   updatePrompt, deletePrompt, togglePin, count,
   getVersions, restoreVersion, deleteVersion,
-  saveRecentCapture, getRecentCaptures, getRecentCaptureById, deleteRecentCapture,
+saveRecentCapture, getRecentCaptures, getRecentCaptureById, deleteRecentCapture, cleanupRecentCaptures,
   saveTrainingLabel, getTrainingLabels, getTrainingLabelMap, deleteTrainingLabel,
   getVaultStats, getTopPromptsForTemplate, getRevision, invalidateStatsCache,
   kvSet, kvGet, kvDelete,
